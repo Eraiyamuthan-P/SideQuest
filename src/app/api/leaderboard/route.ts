@@ -9,10 +9,10 @@ export async function GET() {
         id: true,
         username: true,
         verified: true,
-        credits: true,
+        balance: true,
       },
       orderBy: {
-        credits: 'desc',
+        balance: 'desc',
       },
       take: 50,
     });

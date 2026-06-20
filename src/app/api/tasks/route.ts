@@ -169,12 +169,12 @@ export async function POST(req: NextRequest) {
     // 3. Check if user has enough credits to pay the budget
     const user = await prisma.user.findUnique({
       where: { id: sessionUser.id },
-      select: { credits: true },
+      select: { balance: true },
     });
 
-    if (!user || user.credits < parsedBudget) {
+    if (!user || user.balance < parsedBudget) {
       return NextResponse.json({
-        error: `Insufficient credits. Your current balance is ${user?.credits || 0} credits, but this task requires a budget of ${parsedBudget} credits.`
+        error: `Insufficient balance. Your current balance is ₹${user?.balance || 0}, but this task requires a budget of ₹${parsedBudget}.`
       }, { status: 400 });
     }
 
@@ -201,15 +201,15 @@ export async function POST(req: NextRequest) {
       // Deduct credits from user's account
       await tx.user.update({
         where: { id: sessionUser.id },
-        data: { credits: { decrement: parsedBudget } },
+        data: { balance: { decrement: parsedBudget } },
       });
 
       // Log credit transaction
-      await tx.creditTransaction.create({
+      await tx.transaction.create({
         data: {
           user_id: sessionUser.id,
           amount: -parsedBudget,
-          reason: `Posted task: "${title.trim()}" (Credits held in escrow)`,
+          reason: `Posted task: "${title.trim()}" (₹${parsedBudget} held in escrow)`,
         },
       });
 
@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Task created successfully! Credits have been locked in escrow.',
+      message: 'Task created successfully! ₹' + parsedBudget + ' held in escrow.',
       task,
     });
 

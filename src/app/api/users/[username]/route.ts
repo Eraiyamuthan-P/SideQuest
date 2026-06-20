@@ -20,7 +20,7 @@ export async function GET(
         username: true,
         email: true,
         verified: true,
-        credits: true,
+        balance: true,
         bio: true,
         hostel_block: true,
         created_at: true,
@@ -87,12 +87,12 @@ export async function GET(
       },
     });
 
-    // Count doer cancellations based on credit transactions
-    const doerCancelled = await prisma.creditTransaction.count({
+    // Count doer cancellations based on transactions
+    const doerCancelled = await prisma.transaction.count({
       where: {
         user_id: user.id,
         reason: {
-          contains: 'Cancel after being assigned (doer)',
+          contains: 'Cancelled assignment',
         },
       },
     });
@@ -158,7 +158,7 @@ export async function GET(
         username: user.username,
         email: user.email,
         verified: user.verified,
-        credits: user.credits,
+        balance: user.balance,
         bio: user.bio,
         hostel_block: user.hostel_block,
         created_at: user.created_at,

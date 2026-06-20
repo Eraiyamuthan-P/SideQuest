@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Clearing database...');
   await prisma.supportTicket.deleteMany({});
-  await prisma.creditTransaction.deleteMany({});
+  await prisma.transaction.deleteMany({});
   await prisma.message.deleteMany({});
   await prisma.badge.deleteMany({});
   await prisma.review.deleteMany({});
@@ -21,7 +21,7 @@ async function main() {
       username: 'vit_admin',
       email: 'admin@vit.ac.in',
       verified: true,
-      credits: 500,
+      balance: 500,
       bio: 'Official VIT Campus Task Administrator. Here to manage disputes and support tickets.',
       hostel_block: 'Main Office',
     },
@@ -32,7 +32,7 @@ async function main() {
       username: 'arjun_s',
       email: 'arjun.s@vitstudent.ac.in',
       verified: true,
-      credits: 150,
+      balance: 150,
       bio: '3rd year B.Tech CSE. Good at Math tutoring and Java programming. Live in Block L.',
       hostel_block: 'L Block',
     },
@@ -43,7 +43,7 @@ async function main() {
       username: 'riya_p',
       email: 'riya.patel2022@vitstudent.ac.in',
       verified: true,
-      credits: 90,
+      balance: 90,
       bio: '2nd year Biotech student. Can run quick errands around campus. Live in Block D.',
       hostel_block: 'D Block',
     },
@@ -54,7 +54,7 @@ async function main() {
       username: 'neha_s',
       email: 'neha.sharma@vitstudent.ac.in',
       verified: true,
-      credits: 120,
+      balance: 120,
       bio: '4th year ECE. Happy to help with proofreading or second-hand items. Block G.',
       hostel_block: 'G Block',
     },
@@ -65,7 +65,7 @@ async function main() {
       username: 'vikram_r',
       email: 'vikram.rathore@vitstudent.ac.in',
       verified: true,
-      credits: 80,
+      balance: 80,
       bio: 'Mechanical Eng student. Bike rider. Let me know if you need pick-up or drops from main gate.',
       hostel_block: 'Q Block',
     },
@@ -76,7 +76,7 @@ async function main() {
       username: 'karan_m',
       email: 'karan.m@vitstudent.ac.in',
       verified: false,
-      credits: 100,
+      balance: 100,
       bio: 'Freshman B.Tech IT. Unverified for now.',
       hostel_block: 'F Block',
     },
@@ -265,19 +265,19 @@ async function main() {
 
   console.log('Seeding credit transactions...');
   // Let\'s record some transactions for Riya and Vikram
-  await prisma.creditTransaction.create({
+  await prisma.transaction.create({
     data: {
       user_id: riya.id,
       amount: 10,
-      reason: 'Completed task: Snack delivery from Foodys',
+      reason: 'Earned: Snack delivery from Foodys (task payment)',
     },
   });
 
-  await prisma.creditTransaction.create({
+  await prisma.transaction.create({
     data: {
       user_id: vikram.id,
       amount: 5,
-      reason: 'Completed posting task: Snack delivery from Foodys',
+      reason: 'Completion bonus: Snack delivery from Foodys (Poster)',
     },
   });
 

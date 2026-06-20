@@ -43,7 +43,7 @@ model User {
   username           String              @unique
   email              String              @unique
   verified           Boolean             @default(false)
-  credits            Int                 @default(100)
+  balance            Float               @default(500)
   bio                String?
   hostel_block       String?
   created_at         DateTime            @default(now())
@@ -54,7 +54,7 @@ model User {
   sent_reviews       Review[]            @relation("SentReviews")
   badges             Badge[]
   messages           Message[]
-  credit_transactions CreditTransaction[]
+  transactions       Transaction[]
   support_tickets    SupportTicket[]
 }
 
@@ -142,10 +142,10 @@ model Message {
   sender          User     @relation(fields: [sender_id], references: [id], onDelete: Cascade)
 }
 
-model CreditTransaction {
+model Transaction {
   id         String   @id @default(uuid())
   user_id    String
-  amount     Int
+  amount     Float
   reason     String
   created_at DateTime @default(now())
 

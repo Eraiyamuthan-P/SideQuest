@@ -107,7 +107,7 @@ export async function POST(
           data: {
             task_id: taskId,
             sender_id: task.poster_id, // sent by system but marked as poster or just intro
-            content: `👋 SideQuest Assigned! @${sessionUser.username} has been assigned to this task. The agreed budget is 🪙${finalPayment} credits.`,
+            content: `👋 SideQuest Assigned! @${sessionUser.username} has been assigned to this task. The agreed payment is ₹${finalPayment}.`,
           },
         });
 

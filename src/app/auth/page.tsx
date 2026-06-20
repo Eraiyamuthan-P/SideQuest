@@ -1,4 +1,3 @@
-'use intelligence'; // We will use standard React client component syntax
 'use client';
 
 import React, { useState } from 'react';

@@ -204,7 +204,7 @@ export default function BrowsingPage() {
               <input
                 className="form-input"
                 type="number"
-                placeholder="Min credits"
+                placeholder="Min ₹"
                 value={budgetMin}
                 onChange={(e) => setBudgetMin(e.target.value)}
                 style={{ maxWidth: '120px', padding: '0.5rem' }}
@@ -213,7 +213,7 @@ export default function BrowsingPage() {
               <input
                 className="form-input"
                 type="number"
-                placeholder="Max credits"
+                placeholder="Max ₹"
                 value={budgetMax}
                 onChange={(e) => setBudgetMax(e.target.value)}
                 style={{ maxWidth: '120px', padding: '0.5rem' }}
@@ -227,7 +227,7 @@ export default function BrowsingPage() {
                 className="btn btn-secondary"
                 style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
               >
-                Above 🪙100
+                Above ₹100
               </button>
               <button
                 type="button"
@@ -235,7 +235,7 @@ export default function BrowsingPage() {
                 className="btn btn-secondary"
                 style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
               >
-                Below 🪙100
+                Below ₹100
               </button>
               {(search || category !== 'All' || budgetMin || budgetMax || sortBy !== 'newest') && (
                 <button
@@ -330,7 +330,7 @@ export default function BrowsingPage() {
                     📍 {task.location}
                   </span>
                   <span style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--warning)' }}>
-                    🪙{task.budget}
+                    ₹{task.budget.toFixed(0)}
                   </span>
                 </div>
 

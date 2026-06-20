@@ -53,7 +53,7 @@ export async function PUT(req: NextRequest) {
         username: true,
         email: true,
         verified: true,
-        credits: true,
+        balance: true,
         bio: true,
         hostel_block: true,
       },

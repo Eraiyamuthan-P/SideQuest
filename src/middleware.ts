@@ -25,13 +25,6 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // If logged in and visiting auth, redirect to browsing
-  if (pathname === '/auth' && token) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    return NextResponse.redirect(url);
-  }
-
   return NextResponse.next();
 }
 

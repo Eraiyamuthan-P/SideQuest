@@ -7,7 +7,7 @@ interface LeaderboardUser {
   id: string;
   username: string;
   verified: boolean;
-  credits: number;
+  balance: number;
 }
 
 export default function LeaderboardPage() {
@@ -59,7 +59,7 @@ export default function LeaderboardPage() {
           Campus Leaderboard
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-          Ranked by credit holdings. Complete tasks and maintain high ratings to climb the board!
+          Ranked by wallet balance. Complete tasks and maintain high ratings to climb the board!
         </p>
       </div>
 
@@ -130,7 +130,7 @@ export default function LeaderboardPage() {
 
                     {/* Credit Balance */}
                     <td style={{ padding: '1rem', textAlign: 'right', fontWeight: 700, color: 'var(--warning)', fontSize: '1.05rem' }}>
-                      🪙 {user.credits}
+                      ₹{user.balance.toFixed(0)}
                     </td>
                   </tr>
                 );

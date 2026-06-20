@@ -75,9 +75,9 @@ export async function PUT(
         // 2. Transfer escrowed budget/offer amount to Doer
         await tx.user.update({
           where: { id: acceptedApp.applicant_id },
-          data: { credits: { increment: finalPayment } },
+          data: { balance: { increment: finalPayment } },
         });
-        await tx.creditTransaction.create({
+        await tx.transaction.create({
           data: {
             user_id: acceptedApp.applicant_id,
             amount: finalPayment,
@@ -85,29 +85,29 @@ export async function PUT(
           },
         });
 
-        // 3. Doer completion bonus (+10)
+        // 3. Doer completion bonus (+₹10)
         await tx.user.update({
           where: { id: acceptedApp.applicant_id },
-          data: { credits: { increment: 10 } },
+          data: { balance: { increment: 10 } },
         });
-        await tx.creditTransaction.create({
+        await tx.transaction.create({
           data: {
             user_id: acceptedApp.applicant_id,
             amount: 10,
-            reason: `Bonus credits for task completion (Doer)`,
+            reason: `Completion bonus ₹10 (Doer)`,
           },
         });
 
-        // 4. Poster completion bonus (+5)
+        // 4. Poster completion bonus (+₹5)
         await tx.user.update({
           where: { id: task.poster_id },
-          data: { credits: { increment: 5 } },
+          data: { balance: { increment: 5 } },
         });
-        await tx.creditTransaction.create({
+        await tx.transaction.create({
           data: {
             user_id: task.poster_id,
             amount: 5,
-            reason: `Bonus credits for task completion (Poster)`,
+            reason: `Completion bonus ₹5 (Poster)`,
           },
         });
 
@@ -152,22 +152,22 @@ export async function PUT(
           // Penalty: -5 credits for poster
           await tx.user.update({
             where: { id: task.poster_id },
-            data: { credits: { decrement: 5 } },
+            data: { balance: { decrement: 5 } },
           });
-          await tx.creditTransaction.create({
+          await tx.transaction.create({
             data: {
               user_id: task.poster_id,
               amount: -5,
-              reason: `Penalty: Cancelled task "${task.title}" after assignment`,
+              reason: `Penalty: Cancelled task "${task.title}" after assignment (-₹5)`,
             },
           });
 
           // Refund the escrowed budget back to poster
           await tx.user.update({
             where: { id: task.poster_id },
-            data: { credits: { increment: finalPayment } },
+            data: { balance: { increment: finalPayment } },
           });
-          await tx.creditTransaction.create({
+          await tx.transaction.create({
             data: {
               user_id: task.poster_id,
               amount: finalPayment,
@@ -176,25 +176,25 @@ export async function PUT(
           });
         } else if (isDoer) {
           // Doer cancels:
-          // Penalty: -10 credits for doer
+          // Penalty: -₹10 for doer
           await tx.user.update({
             where: { id: acceptedApp.applicant_id },
-            data: { credits: { decrement: 10 } },
+            data: { balance: { decrement: 10 } },
           });
-          await tx.creditTransaction.create({
+          await tx.transaction.create({
             data: {
               user_id: acceptedApp.applicant_id,
               amount: -10,
-              reason: `Penalty: Cancelled assignment for task "${task.title}"`,
+              reason: `Penalty: Cancelled assignment for task "${task.title}" (-₹10)`,
             },
           });
 
           // Refund the escrowed budget back to poster (since task is returned to open)
           await tx.user.update({
             where: { id: task.poster_id },
-            data: { credits: { increment: finalPayment } },
+            data: { balance: { increment: finalPayment } },
           });
-          await tx.creditTransaction.create({
+          await tx.transaction.create({
             data: {
               user_id: task.poster_id,
               amount: finalPayment,

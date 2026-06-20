@@ -60,17 +60,17 @@ export async function POST(req: NextRequest) {
           email: lowerEmail,
           username,
           verified: true,
-          credits: 100, // starting credits
+          balance: 500, // starting INR balance
           bio: 'VIT Student',
         },
       });
 
       // Record first transaction
-      await prisma.creditTransaction.create({
+      await prisma.transaction.create({
         data: {
           user_id: user.id,
-          amount: 100,
-          reason: 'Initial sign-up bonus credits',
+          amount: 500,
+          reason: 'Welcome bonus: ₹500 added to your wallet',
         },
       });
     } else {
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
         username: user.username,
         email: user.email,
         verified: user.verified,
-        credits: user.credits,
+        balance: user.balance,
         bio: user.bio,
         hostel_block: user.hostel_block,
       },

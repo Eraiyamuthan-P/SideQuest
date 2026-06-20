@@ -98,7 +98,7 @@ export async function Navbar() {
                 fontWeight: 600,
                 color: 'var(--warning)',
               }}>
-                🪙 {user.credits} Credits
+                ₹{user.balance.toFixed(0)}
               </div>
 
               <Link href={`/profile/${user.username}`} style={{

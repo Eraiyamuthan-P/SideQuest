@@ -93,9 +93,9 @@ export async function PUT(req: NextRequest) {
           // 1. Return task payment amount from Doer's credits back to Poster
           await tx.user.update({
             where: { id: acceptedApp.applicant_id },
-            data: { credits: { decrement: finalPayment } },
+            data: { balance: { decrement: finalPayment } },
           });
-          await tx.creditTransaction.create({
+          await tx.transaction.create({
             data: {
               user_id: acceptedApp.applicant_id,
               amount: -finalPayment,
@@ -105,42 +105,42 @@ export async function PUT(req: NextRequest) {
 
           await tx.user.update({
             where: { id: task.poster_id },
-            data: { credits: { increment: finalPayment } },
+            data: { balance: { increment: finalPayment } },
           });
-          await tx.creditTransaction.create({
+          await tx.transaction.create({
             data: {
               user_id: task.poster_id,
               amount: finalPayment,
-              reason: `Dispute Resolution: Refunded payment for task "${task.title}"`,
+              reason: `Dispute Resolution: Refunded ₹${finalPayment} for task "${task.title}"`,
             },
           });
 
-          // 2. Penalize Doer (-15 credits)
+          // 2. Penalize Doer (-₹15)
           await tx.user.update({
             where: { id: acceptedApp.applicant_id },
-            data: { credits: { decrement: 15 } },
+            data: { balance: { decrement: 15 } },
           });
-          await tx.creditTransaction.create({
+          await tx.transaction.create({
             data: {
               user_id: acceptedApp.applicant_id,
               amount: -15,
-              reason: `Penalty: Dispute resolved against you (Doer) on task "${task.title}"`,
+              reason: `Penalty: Dispute resolved against you (Doer) on task "${task.title}" (-₹15)`,
             },
           });
 
         } else if (resolution === 'favor_doer') {
           // Doer wins:
-          // 1. Doer keeps the credits (already transferred on completion).
-          // 2. Penalize Poster (-15 credits)
+          // 1. Doer keeps the balance (already transferred on completion).
+          // 2. Penalize Poster (-₹15)
           await tx.user.update({
             where: { id: task.poster_id },
-            data: { credits: { decrement: 15 } },
+            data: { balance: { decrement: 15 } },
           });
-          await tx.creditTransaction.create({
+          await tx.transaction.create({
             data: {
               user_id: task.poster_id,
               amount: -15,
-              reason: `Penalty: Dispute resolved against you (Poster) on task "${task.title}"`,
+              reason: `Penalty: Dispute resolved against you (Poster) on task "${task.title}" (-₹15)`,
             },
           });
         }

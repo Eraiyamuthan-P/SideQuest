@@ -31,7 +31,7 @@ export async function PUT(
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       include: {
-        poster: { select: { id: true, username: true, email: true, credits: true } },
+        poster: { select: { id: true, username: true, email: true, balance: true } },
       },
     });
 
@@ -88,9 +88,9 @@ export async function PUT(
     const budgetDifference = finalOffer - originalBudget;
 
     // Check if poster has enough credits to pay for a higher offer
-    if (budgetDifference > 0 && task.poster.credits < budgetDifference) {
+    if (budgetDifference > 0 && task.poster.balance < budgetDifference) {
       return NextResponse.json({
-        error: `Insufficient credits. Accepting this custom offer requires an additional ${budgetDifference} credits, but your current balance is ${task.poster.credits} credits.`
+        error: `Insufficient balance. Accepting this custom offer requires an additional ₹${budgetDifference}, but your current balance is ₹${task.poster.balance}.`
       }, { status: 400 });
     }
 
@@ -107,16 +107,16 @@ export async function PUT(
         // If offer is higher, deduct extra credits from poster. If lower, refund the difference.
         await tx.user.update({
           where: { id: task.poster_id },
-          data: { credits: { decrement: budgetDifference } },
+          data: { balance: { decrement: budgetDifference } },
         });
 
-        await tx.creditTransaction.create({
+        await tx.transaction.create({
           data: {
             user_id: task.poster_id,
             amount: -budgetDifference,
             reason: budgetDifference > 0 
-              ? `Accepted higher offer (+${budgetDifference}) on task: "${task.title}"`
-              : `Refund for lower accepted offer (${budgetDifference}) on task: "${task.title}"`,
+              ? `Accepted higher offer (+₹${budgetDifference}) on task: "${task.title}"`
+              : `Refund for lower accepted offer (₹${Math.abs(budgetDifference)}) on task: "${task.title}"`,
           },
         });
       }
@@ -149,7 +149,7 @@ export async function PUT(
         data: {
           task_id: taskId,
           sender_id: task.poster_id,
-          content: `👋 SideQuest Assigned! @${application.applicant.username} has been assigned to this task. The agreed budget is 🪙${finalOffer} credits.`,
+          content: `👋 SideQuest Assigned! @${application.applicant.username} has been assigned to this task. The agreed payment is ₹${finalOffer}.`,
         },
       });
 
@@ -161,8 +161,8 @@ export async function PUT(
     await sendEmail({
       to: application.applicant.email,
       subject: `[SideQuest Assigned] ${task.title}`,
-      text: `Congratulations! @${task.poster.username} has accepted your application for "${task.title}". The final price is agreed at 🪙${finalOffer} credits. Check your inbox to coordinate!`,
-      html: `<p>Congratulations! <strong>@${task.poster.username}</strong> has accepted your application for <strong>"${task.title}"</strong>.</p><p>The final price is agreed at 🪙${finalOffer} credits.</p><p>Go to your chat inbox to coordinate details.</p>`,
+      text: `Congratulations! @${task.poster.username} has accepted your application for "${task.title}". The final price is agreed at ₹${finalOffer}. Check your inbox to coordinate!`,
+      html: `<p>Congratulations! <strong>@${task.poster.username}</strong> has accepted your application for <strong>"${task.title}"</strong>.</p><p>The final payment is <strong>₹${finalOffer}</strong>.</p><p>Go to your chat inbox to coordinate details.</p>`,
     });
 
     // 2. Send email to poster

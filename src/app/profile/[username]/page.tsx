@@ -20,7 +20,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
       username: true,
       email: true,
       verified: true,
-      credits: true,
+      balance: true,
       bio: true,
       hostel_block: true,
       created_at: true,
@@ -82,10 +82,10 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
     },
   });
 
-  const doerCancelled = await prisma.creditTransaction.count({
+  const doerCancelled = await prisma.transaction.count({
     where: {
       user_id: profileUser.id,
-      reason: { contains: 'Cancel after being assigned (doer)' },
+      reason: { contains: 'Cancelled assignment' },
     },
   });
 
@@ -138,7 +138,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
 
   // --- PRIVATE LOGS (OWNER ONLY) ---
   const transactions = isOwner
-    ? await prisma.creditTransaction.findMany({
+    ? await prisma.transaction.findMany({
         where: { user_id: profileUser.id },
         orderBy: { created_at: 'desc' },
       })
@@ -235,7 +235,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
               gap: '0.5rem',
               boxShadow: '0 0 15px rgba(245, 158, 11, 0.1)',
             }}>
-              🪙 {profileUser.credits} Credits
+              ₹{profileUser.balance.toFixed(0)} Balance
             </div>
           </div>
 
@@ -495,7 +495,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
                         <th style={{ padding: '0.5rem', color: 'var(--text-secondary)' }}>Task</th>
-                        <th style={{ padding: '0.5rem', color: 'var(--text-secondary)' }}>Credits Received</th>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-secondary)' }}>Amount Earned</th>
                         <th style={{ padding: '0.5rem', color: 'var(--text-secondary)' }}>Date</th>
                       </tr>
                     </thead>
@@ -503,7 +503,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                       {earnings.map((task) => (
                         <tr key={task.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                           <td style={{ padding: '0.75rem 0.5rem', fontWeight: 500 }}>{task.title}</td>
-                          <td style={{ padding: '0.75rem 0.5rem', color: 'var(--success)', fontWeight: 600 }}>+10 Credits</td>
+                          <td style={{ padding: '0.75rem 0.5rem', color: 'var(--success)', fontWeight: 600 }}>₹{task.budget.toFixed(0)}</td>
                           <td style={{ padding: '0.75rem 0.5rem', color: 'var(--text-secondary)' }}>
                             {new Date(task.created_at).toLocaleDateString()}
                           </td>
@@ -514,7 +514,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                 </div>
               ) : (
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>
-                  No earnings logged yet. Complete tasks to earn credits!
+                  No earnings logged yet. Complete tasks to earn money!
                 </p>
               )}
             </div>
@@ -547,7 +547,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                           fontSize: '0.95rem',
                           color: isPositive ? 'var(--success)' : 'var(--danger)',
                         }}>
-                          {isPositive ? '+' : ''}{tx.amount}
+                          {isPositive ? '+₹' : '-₹'}{Math.abs(tx.amount).toFixed(0)}
                         </span>
                       </div>
                     );

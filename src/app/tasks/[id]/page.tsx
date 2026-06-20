@@ -9,7 +9,7 @@ interface User {
   username: string;
   email: string;
   verified: boolean;
-  credits: number;
+  balance: number;
 }
 
 interface Task {
@@ -170,7 +170,7 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
 
   // Handle Accept Application (Poster Action)
   const handleAcceptApplication = async (appId: string) => {
-    if (!confirm('Are you sure you want to assign this student? Your locked credits will be updated.')) return;
+    if (!confirm('Are you sure you want to assign this student? Your locked funds will be updated.')) return;
     setError('');
     setSuccess('');
     setActionLoading(true);
@@ -228,7 +228,7 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
 
   // Handle Task Completion (Doer Action)
   const handleCompleteTask = async () => {
-    if (!confirm('Mark this task as completed? This will release the escrowed credits and award bonuses (+10 doer, +5 poster).')) return;
+    if (!confirm('Mark this task as completed? This will release the escrowed funds and award bonuses (+₹10 doer, +₹5 poster).')) return;
     setError('');
     setSuccess('');
     setActionLoading(true);
@@ -259,8 +259,8 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
   // Handle Task Cancellation (Poster or Doer Action)
   const handleCancelTask = async () => {
     const penaltyMsg = isPoster 
-      ? 'Are you sure you want to cancel? Because a student is assigned, you will incur a -5 credit penalty and your escrowed credits will be refunded.'
-      : 'Are you sure you want to cancel your assignment? You will incur a -10 credit penalty and the task will be returned to open for other students.';
+      ? 'Are you sure you want to cancel? Because a student is assigned, you will incur a -₹5 penalty and your escrowed funds will be refunded.'
+      : 'Are you sure you want to cancel your assignment? You will incur a -₹10 penalty and the task will be returned to open for other students.';
 
     if (!confirm(penaltyMsg)) return;
     setError('');
@@ -422,11 +422,11 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.95rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '0.5rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Escrowed Budget:</span>
-                <span style={{ fontWeight: 700, color: 'var(--warning)' }}>🪙 {task.budget} Credits</span>
+                <span style={{ fontWeight: 700, color: 'var(--warning)' }}>₹ {task.budget.toFixed(0)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '0.5rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Agreed Payment:</span>
-                <span style={{ fontWeight: 600 }}>🪙 {task.payment_amount || task.budget} Credits</span>
+                <span style={{ fontWeight: 600 }}>₹ {(task.payment_amount || task.budget).toFixed(0)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '0.5rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Deadline:</span>
@@ -510,7 +510,7 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>📍 Block: {app.applicant.hostel_block || 'N/A'}</div>
                             </div>
                             <span style={{ fontWeight: 700, color: app.offer_amount ? 'var(--warning)' : 'var(--text-secondary)', fontSize: '0.95rem' }}>
-                              🪙 {app.offer_amount !== null ? `${app.offer_amount} (Offer)` : `${task.budget}`}
+                              ₹{app.offer_amount !== null ? `${(app.offer_amount as number).toFixed(0)} (Offer)` : `${task.budget.toFixed(0)}`}
                             </span>
                           </div>
 
@@ -554,7 +554,7 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
                   <div style={{ background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245,158,11,0.15)', padding: '1rem', borderRadius: 'var(--border-radius-md)', fontSize: '0.9rem' }}>
                     👥 Assigned Doer: <strong>@{acceptedApplication?.applicant.username}</strong>
                     <br />
-                    💰 Final Offer: <strong>🪙 {task.payment_amount || task.budget} Credits</strong>
+                    💰 Final Offer: <strong>₹{(task.payment_amount || task.budget).toFixed(0)}</strong>
                   </div>
 
                   <Link href={`/chat?taskId=${task.id}`} className="btn btn-primary" style={{ width: '100%' }}>
@@ -567,7 +567,7 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
                     style={{ width: '100%', background: 'transparent', border: '1px solid var(--danger)', color: '#ffffff' }}
                     disabled={actionLoading}
                   >
-                    Cancel Quest (⚠️ -5 Penalty Credits)
+                    Cancel Quest (⚠️ -₹5 Penalty)
                   </button>
                 </div>
               )}
@@ -657,7 +657,7 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
                     style={{ width: '100%', background: 'transparent', border: '1px solid var(--danger)', color: '#ffffff' }}
                     disabled={actionLoading}
                   >
-                    Cancel Assignment (⚠️ -10 Credits Penalty)
+                    Cancel Assignment (⚠️ -₹10 Penalty)
                   </button>
                 </div>
               )}
@@ -665,7 +665,7 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
               {task.status === 'completed' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '1rem', borderRadius: 'var(--border-radius-md)', color: 'var(--success)', fontSize: '0.9rem' }}>
-                    🎉 Completed! Payment of <strong>🪙 {task.payment_amount || task.budget} credits</strong> and completion bonus (+10 credits) have been added to your balance.
+                    🎉 Completed! Payment of <strong>₹{(task.payment_amount || task.budget).toFixed(0)}</strong> and completion bonus (+₹10) have been added to your wallet.
                   </div>
                   <Link href={`/chat?taskId=${task.id}`} className="btn btn-secondary" style={{ width: '100%' }}>
                     💬 View Chat Log (Read-Only)
@@ -687,7 +687,7 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
                     <div style={{ background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', padding: '1rem', borderRadius: 'var(--border-radius-md)', textAlign: 'center' }}>
                       <p style={{ fontWeight: 600, color: 'var(--warning)', marginBottom: '0.25rem' }}>Application Pending</p>
                       <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        Your offer: <strong>🪙 {myApplication.offer_amount !== null ? myApplication.offer_amount : task.budget} Credits</strong>
+                        Your offer: <strong>₹{myApplication.offer_amount !== null ? (myApplication.offer_amount as number).toFixed(0) : task.budget.toFixed(0)}</strong>
                       </p>
                     </div>
                   ) : (
@@ -702,7 +702,7 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
                 task.status === 'open' ? (
                   <form onSubmit={handleApply}>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
-                      Apply to this task. The default budget is <strong>🪙{task.budget} credits</strong>, but you can request a custom price offer.
+                      Apply to this task. The default budget is <strong>₹{task.budget.toFixed(0)}</strong>, but you can request a custom price offer.
                     </p>
 
                     <div className="form-group" style={{ marginBottom: '1.25rem' }}>
@@ -721,7 +721,7 @@ export default function TaskDetailsPage({ params }: TaskPageProps) {
 
                       {useCustomOffer && (
                         <div>
-                          <label className="form-label" htmlFor="offer-amount">Your Bid (Credits)</label>
+                          <label className="form-label" htmlFor="offer-amount">Your Bid (₹ INR)</label>
                           <input
                             className="form-input"
                             id="offer-amount"

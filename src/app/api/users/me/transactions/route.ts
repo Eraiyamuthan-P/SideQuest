@@ -10,8 +10,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetch credit transactions
-    const transactions = await prisma.creditTransaction.findMany({
+    // Fetch transactions (INR)
+    const transactions = await prisma.transaction.findMany({
       where: { user_id: sessionUser.id },
       orderBy: { created_at: 'desc' },
     });

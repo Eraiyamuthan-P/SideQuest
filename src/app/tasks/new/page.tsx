@@ -259,7 +259,7 @@ export default function NewTaskPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.25rem' }}>
             {/* Budget */}
             <div className="form-group">
-              <label className="form-label" htmlFor="task-budget">Budget (Credits)</label>
+              <label className="form-label" htmlFor="task-budget">Budget (₹ INR)</label>
               <input
                 className="form-input"
                 id="task-budget"
@@ -390,7 +390,7 @@ export default function NewTaskPage() {
             marginBottom: '1.5rem',
             lineHeight: 1.5
           }}>
-            🔐 <strong>Escrow Lock:</strong> Upon posting, the budget amount ({budget || '0'} credits) will be immediately deducted from your credit balance and held securely. The credits will be released to the doer(s) once the task is marked as completed. If you cancel the task, your credits will be refunded (minus any cancellation penalties).
+            🔐 <strong>Escrow Lock:</strong> Upon posting, the budget amount (₹{budget || '0'}) will be immediately deducted from your wallet balance and held securely. The funds will be released to the doer(s) once the task is marked as completed. If you cancel the task, your money will be refunded (minus any cancellation penalties).
           </div>
 
           <div style={{ display: 'flex', gap: '1rem' }}>

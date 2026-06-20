@@ -7,7 +7,7 @@ export interface AuthenticatedUser {
   username: string;
   email: string;
   verified: boolean;
-  credits: number;
+  balance: number;
 }
 
 export async function getSessionUser(): Promise<AuthenticatedUser | null> {
@@ -31,7 +31,7 @@ export async function getSessionUser(): Promise<AuthenticatedUser | null> {
         username: true,
         email: true,
         verified: true,
-        credits: true,
+        balance: true,
       },
     });
 
