@@ -1,0 +1,165 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AssignmentMode {
+  first_come
+  review_select
+}
+
+enum TaskStatus {
+  open
+  assigned
+  in_progress
+  completed
+  cancelled
+}
+
+enum ApplicationStatus {
+  pending
+  accepted
+  rejected
+}
+
+enum ReviewRole {
+  poster
+  doer
+}
+
+enum SupportTicketType {
+  contact
+  feedback
+  bug
+  dispute
+}
+
+model User {
+  id                 String              @id @default(uuid())
+  username           String              @unique
+  email              String              @unique
+  verified           Boolean             @default(false)
+  credits            Int                 @default(100)
+  bio                String?
+  hostel_block       String?
+  created_at         DateTime            @default(now())
+  
+  posted_tasks       Task[]              @relation("PostedTasks")
+  applications       TaskApplication[]
+  received_reviews   Review[]            @relation("ReceivedReviews")
+  sent_reviews       Review[]            @relation("SentReviews")
+  badges             Badge[]
+  messages           Message[]
+  credit_transactions CreditTransaction[]
+  support_tickets    SupportTicket[]
+}
+
+model VerificationOtp {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  otp        String
+  expires_at DateTime
+  created_at DateTime @default(now())
+}
+
+model Task {
+  id              String            @id @default(uuid())
+  poster_id       String
+  title           String
+  description     String
+  category        String
+  photo_url       String?
+  budget          Float
+  payment_amount  Float?
+  deadline        DateTime
+  location        String
+  people_needed   Int               @default(1)
+  assignment_mode AssignmentMode    @default(first_come)
+  status          TaskStatus        @default(open)
+  created_at      DateTime          @default(now())
+
+  poster          User              @relation("PostedTasks", fields: [poster_id], references: [id], onDelete: Cascade)
+  applications    TaskApplication[]
+  reviews         Review[]
+  messages        Message[]
+
+  @@index([status])
+  @@index([category])
+}
+
+model TaskApplication {
+  id           String            @id @default(uuid())
+  task_id      String
+  applicant_id String
+  status       ApplicationStatus @default(pending)
+  offer_amount Float?
+  created_at   DateTime          @default(now())
+
+  task         Task              @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  applicant    User              @relation(fields: [applicant_id], references: [id], onDelete: Cascade)
+
+  @@unique([task_id, applicant_id])
+}
+
+model Review {
+  id          String     @id @default(uuid())
+  task_id     String
+  reviewer_id String
+  reviewee_id String
+  role        ReviewRole
+  rating      Int
+  comment     String
+  created_at  DateTime   @default(now())
+
+  task        Task       @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  reviewer    User       @relation("SentReviews", fields: [reviewer_id], references: [id], onDelete: Cascade)
+  reviewee    User       @relation("ReceivedReviews", fields: [reviewee_id], references: [id], onDelete: Cascade)
+}
+
+model Badge {
+  id         String   @id @default(uuid())
+  user_id    String
+  badge_type String
+  earned_at  DateTime @default(now())
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  task_id         String
+  sender_id       String
+  content         String
+  attachment_url  String?
+  attachment_type String?
+  created_at      DateTime @default(now())
+
+  task            Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  sender          User     @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+}
+
+model CreditTransaction {
+  id         String   @id @default(uuid())
+  user_id    String
+  amount     Int
+  reason     String
+  created_at DateTime @default(now())
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model SupportTicket {
+  id         String            @id @default(uuid())
+  user_id    String
+  type       SupportTicketType
+  subject    String
+  message    String
+  status     String            @default("open")
+  created_at DateTime          @default(now())
+
+  user       User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
