@@ -52,3 +52,8 @@ next-env.d.ts
 # OAuth credentials
 *OAuth*.json
 *Google*.json
+
+# Prompt and internal files
+*.pdf
+CLAUDE.md
+AGENTS.md
