@@ -75,6 +75,17 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: 'Username must be at least 3 characters long and contain only letters, numbers, or underscores.' }, { status: 400 });
       }
 
+      // Profanity moderation filter
+      const blockedWords = [
+        'fuck', 'shit', 'ass', 'bitch', 'bastard', 'cunt', 'dick', 'pussy',
+        'faggot', 'nigger', 'rape', 'sex', 'porn', 'admin', 'moderator',
+        'vit_admin', 'vitadmin', 'superadmin', 'support'
+      ];
+      const hasBlockedWord = blockedWords.some(word => cleanUsername.includes(word));
+      if (hasBlockedWord) {
+        return NextResponse.json({ error: 'Username contains restricted or inappropriate language.' }, { status: 400 });
+      }
+
       if (cleanUsername !== sessionUser.username) {
         const existing = await prisma.user.findUnique({
           where: { username: cleanUsername },
