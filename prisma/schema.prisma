@@ -13,17 +13,18 @@ enum AssignmentMode {
 }
 
 enum TaskStatus {
-  open
-  assigned
-  in_progress
-  completed
-  cancelled
+  OPEN
+  ASSIGNED
+  PENDING_PAYMENT
+  COMPLETED
+  CANCELLED
+  DISPUTED
 }
 
 enum ApplicationStatus {
-  pending
-  accepted
-  rejected
+  PENDING
+  ACCEPTED
+  REJECTED
 }
 
 enum ReviewRole {
@@ -38,24 +39,82 @@ enum SupportTicketType {
   dispute
 }
 
+enum TaskLocation {
+  MENS_HOSTEL      @map("Mens Hostel")
+  WOMENS_HOSTEL    @map("Womens Hostel")
+  TT               @map("TT")
+  LIBRARY          @map("Library")
+  SJT              @map("SJT")
+  SMV              @map("SMV")
+  PRP              @map("PRP")
+  MG_BLOCK         @map("MG Block")
+  FOODYS           @map("Foodys")
+  MAIN_GATE        @map("Main Gate")
+}
+
+enum TaskCategory {
+  TUTORING          @map("Tutoring")
+  FOOD_PICKUP       @map("Food Pickup")
+  RIDE_SHARING      @map("Ride Sharing")
+  PARCEL_DELIVERY   @map("Parcel Delivery")
+  SHOPPING          @map("Shopping")
+  CODING_HELP       @map("Coding Help")
+  NOTES             @map("Notes")
+  PRINTING          @map("Printing")
+  HOSTEL_HELP       @map("Hostel Help")
+  EVENT_ASSISTANCE  @map("Event Assistance")
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum Role {
+  STUDENT
+  MODERATOR
+  ADMIN
+  SUPER_ADMIN
+}
+
 model User {
   id                 String              @id @default(uuid())
   username           String              @unique
   email              String              @unique
   verified           Boolean             @default(false)
-  balance            Float               @default(500)
+  role               Role                @default(STUDENT)
+  credits            Int                 @default(0)
+  ratingAverage      Float               @default(0)
+  ratingCount        Int                 @default(0)
   bio                String?
   hostel_block       String?
   created_at         DateTime            @default(now())
   
+  status             AccountStatus       @default(ACTIVE)
+  deletedAt          DateTime?
+  sessionVersion     Int                 @default(1)
+  
+  availability       Availability        @default(AVAILABLE)
+  skills             String[]            @default([])
+  activeChatTaskId   String?
+  lastChatActiveAt   DateTime?
+  pref_notify_chat        Boolean @default(true)
+  pref_notify_applications Boolean @default(true)
+  pref_notify_reviews     Boolean @default(true)
+  pref_notify_tasks       Boolean @default(true)
+
   posted_tasks       Task[]              @relation("PostedTasks")
   applications       TaskApplication[]
   received_reviews   Review[]            @relation("ReceivedReviews")
   sent_reviews       Review[]            @relation("SentReviews")
   badges             Badge[]
   messages           Message[]
-  transactions       Transaction[]
   support_tickets    SupportTicket[]
+  notifications      Notification[]      @relation("NotificationRecipient")
+  acted_notifications Notification[]     @relation("NotificationActor")
+  saved_tasks        SavedTask[]
+  audit_logs         AuditLog[]          @relation("AdminAuditLogs")
 }
 
 model VerificationOtp {
@@ -67,42 +126,50 @@ model VerificationOtp {
 }
 
 model Task {
-  id              String            @id @default(uuid())
-  poster_id       String
-  title           String
-  description     String
-  category        String
-  photo_url       String?
-  budget          Float
-  payment_amount  Float?
-  deadline        DateTime
-  location        String
-  people_needed   Int               @default(1)
-  assignment_mode AssignmentMode    @default(first_come)
-  status          TaskStatus        @default(open)
-  created_at      DateTime          @default(now())
-
-  poster          User              @relation("PostedTasks", fields: [poster_id], references: [id], onDelete: Cascade)
-  applications    TaskApplication[]
-  reviews         Review[]
-  messages        Message[]
+  id                  String            @id @default(uuid())
+  poster_id           String
+  title               String
+  description         String
+  category            TaskCategory
+  photo_url           String?
+  offeredAmount       Int
+  agreedAmount        Int?
+  pendingPaymentSince DateTime?
+  deadline            DateTime
+  location            TaskLocation
+  people_needed       Int               @default(1)
+  assignment_mode     AssignmentMode    @default(first_come)
+  status              TaskStatus        @default(OPEN)
+  created_at          DateTime          @default(now())
+  cancellationRequestedBy String?
+  isUrgent            Boolean           @default(false)
+  estimatedDuration   EstimatedDuration @default(MIN_30)
+  isPinned            Boolean           @default(false)
+  
+  poster              User              @relation("PostedTasks", fields: [poster_id], references: [id], onDelete: Cascade)
+  applications        TaskApplication[]
+  reviews             Review[]
+  messages            Message[]
+  saved_by            SavedTask[]
+  notifications       Notification[]      @relation("NotificationTask")
 
   @@index([status])
   @@index([category])
 }
 
 model TaskApplication {
-  id           String            @id @default(uuid())
-  task_id      String
-  applicant_id String
-  status       ApplicationStatus @default(pending)
-  offer_amount Float?
-  created_at   DateTime          @default(now())
+  id              String            @id @default(uuid())
+  taskId          String
+  doerId          String
+  requestedAmount Int
+  isCounterBid    Boolean
+  status          ApplicationStatus @default(PENDING)
+  createdAt       DateTime          @default(now())
 
-  task         Task              @relation(fields: [task_id], references: [id], onDelete: Cascade)
-  applicant    User              @relation(fields: [applicant_id], references: [id], onDelete: Cascade)
+  task            Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  doer            User              @relation(fields: [doerId], references: [id], onDelete: Cascade)
 
-  @@unique([task_id, applicant_id])
+  @@unique([taskId, doerId])
 }
 
 model Review {
@@ -114,10 +181,13 @@ model Review {
   rating      Int
   comment     String
   created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
 
   task        Task       @relation(fields: [task_id], references: [id], onDelete: Cascade)
   reviewer    User       @relation("SentReviews", fields: [reviewer_id], references: [id], onDelete: Cascade)
   reviewee    User       @relation("ReceivedReviews", fields: [reviewee_id], references: [id], onDelete: Cascade)
+
+  @@unique([task_id, reviewer_id])
 }
 
 model Badge {
@@ -142,16 +212,6 @@ model Message {
   sender          User     @relation(fields: [sender_id], references: [id], onDelete: Cascade)
 }
 
-model Transaction {
-  id         String   @id @default(uuid())
-  user_id    String
-  amount     Float
-  reason     String
-  created_at DateTime @default(now())
-
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-}
-
 model SupportTicket {
   id         String            @id @default(uuid())
   user_id    String
@@ -162,4 +222,80 @@ model SupportTicket {
   created_at DateTime          @default(now())
 
   user       User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+enum EstimatedDuration {
+  MIN_10          @map("10m")
+  MIN_30          @map("30m")
+  HOUR_1          @map("1h")
+  HALF_DAY        @map("half day")
+  FULL_DAY        @map("full day")
+}
+
+enum Availability {
+  AVAILABLE
+  BUSY
+}
+
+enum NotificationType {
+  BID
+  ASSIGNMENT
+  COMPLETION
+  CHAT
+  REVIEW
+  REJECTION
+  SYSTEM
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  user_id     String
+  actorId     String?
+  taskId      String?
+  title       String
+  message     String
+  type        NotificationType
+  is_read     Boolean          @default(false)
+  link        String?
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+
+  user        User             @relation("NotificationRecipient", fields: [user_id], references: [id], onDelete: Cascade)
+  actor       User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  task        Task?            @relation("NotificationTask", fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model SavedTask {
+  id         String   @id @default(uuid())
+  user_id    String
+  task_id    String
+  created_at DateTime @default(now())
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, task_id])
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  actorId       String
+  actor         User     @relation("AdminAuditLogs", fields: [actorId], references: [id], onDelete: Cascade)
+  actorEmail    String
+  targetId      String?
+  targetEmail   String?
+  action        String
+  reason        String
+  metadata      Json?
+  ipAddress     String?
+  createdAt     DateTime @default(now())
+}
+
+model AdminInvitation {
+  id         String    @id @default(uuid())
+  email      String    @unique
+  role       Role
+  invitedBy  String    // Email of the superadmin/admin who created it
+  createdAt  DateTime  @default(now())
+  acceptedAt DateTime?
 }

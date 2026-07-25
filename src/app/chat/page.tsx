@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface InboxItem {
   taskId: string;
@@ -67,6 +68,17 @@ export default function ChatPage() {
     };
     fetchSession();
   }, [router]);
+
+  // Clear active chat status in database on unmount
+  useEffect(() => {
+    return () => {
+      fetch('/api/users/me', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activeChatTaskId: null }),
+      }).catch((err) => console.error('Failed to clear active chat session:', err));
+    };
+  }, []);
 
   // Fetch inbox items
   const loadInbox = async (selectTaskId?: string) => {
@@ -330,7 +342,7 @@ export default function ChatPage() {
             {/* Error alerts inside chat */}
             {error && (
               <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', borderBottom: '1px solid rgba(239,68,68,0.2)', padding: '0.5rem 1.5rem', fontSize: '0.8rem' }}>
-                ⚠️ {error}
+                [Warning] {error}
               </div>
             )}
 
@@ -390,12 +402,17 @@ export default function ChatPage() {
                           <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed rgba(255,255,255,0.2)' }}>
                             {msg.attachment_type?.startsWith('image/') ? (
                               <a href={msg.attachment_url!} target="_blank" rel="noopener noreferrer">
-                                <img
+                                <Image
                                   src={msg.attachment_url!}
                                   alt="Shared photo"
+                                  width={220}
+                                  height={140}
+                                  unoptimized
                                   style={{
                                     maxWidth: '220px',
                                     maxHeight: '140px',
+                                    width: 'auto',
+                                    height: 'auto',
                                     borderRadius: 'var(--border-radius-sm)',
                                     display: 'block',
                                     border: '1px solid rgba(255,255,255,0.1)',
@@ -448,14 +465,14 @@ export default function ChatPage() {
               {/* Quick Replies Buttons (Hidden if read-only) */}
               {!isChatLocked && (
                 <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
-                  <button onClick={() => handleQuickReply('On my way! 🏃‍♂️')} className="btn btn-secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }} disabled={sendLoading}>
-                    🏃‍♂️ On my way!
+                  <button onClick={() => handleQuickReply('On my way!')} className="btn btn-secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }} disabled={sendLoading}>
+                    On my way!
                   </button>
-                  <button onClick={() => handleQuickReply('Running late by 10 mins ⏰')} className="btn btn-secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }} disabled={sendLoading}>
-                    ⏰ Running late by 10m
+                  <button onClick={() => handleQuickReply('Running late by 10 mins')} className="btn btn-secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }} disabled={sendLoading}>
+                    Running late by 10m
                   </button>
                   <button onClick={() => handleQuickReply('Finished task! Please review.')} className="btn btn-secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }} disabled={sendLoading}>
-                    ✅ Delivered task
+                    Delivered task
                   </button>
                 </div>
               )}

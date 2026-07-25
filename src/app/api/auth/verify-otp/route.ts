@@ -54,25 +54,43 @@ export async function POST(req: NextRequest) {
         username = `${baseUsername}_${count}`;
       }
 
+      // Check for SUPER_ADMIN email or pending AdminInvitation
+      const superAdminEmail = 'eraiyamuthan.p2023@vitstudent.ac.in';
+      let initialRole = 'STUDENT';
+
+      if (lowerEmail === superAdminEmail) {
+        initialRole = 'SUPER_ADMIN';
+      } else {
+        const invitation = await prisma.adminInvitation.findUnique({
+          where: { email: lowerEmail },
+        });
+        if (invitation) {
+          const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+          const isExpired = Date.now() - new Date(invitation.createdAt).getTime() > thirtyDaysMs;
+          if (!isExpired) {
+            initialRole = invitation.role;
+          }
+        }
+      }
+
       // Create new user
       user = await prisma.user.create({
         data: {
           email: lowerEmail,
           username,
           verified: true,
-          balance: 500, // starting INR balance
           bio: 'VIT Student',
+          role: initialRole as any,
         },
       });
 
-      // Record first transaction
-      await prisma.transaction.create({
-        data: {
-          user_id: user.id,
-          amount: 500,
-          reason: 'Welcome bonus: ₹500 added to your wallet',
-        },
-      });
+      // Mark invitation as accepted if it exists
+      if (initialRole !== 'STUDENT' && lowerEmail !== superAdminEmail) {
+        await prisma.adminInvitation.update({
+          where: { email: lowerEmail },
+          data: { acceptedAt: new Date() },
+        });
+      }
     } else {
       // If user existed but wasn't verified, mark verified
       if (!user.verified) {
@@ -93,6 +111,8 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       email: user.email,
       username: user.username,
+      role: user.role,
+      sessionVersion: user.sessionVersion,
     });
 
     // Create Response with HTTP-only cookie
@@ -103,7 +123,6 @@ export async function POST(req: NextRequest) {
         username: user.username,
         email: user.email,
         verified: user.verified,
-        balance: user.balance,
         bio: user.bio,
         hostel_block: user.hostel_block,
       },

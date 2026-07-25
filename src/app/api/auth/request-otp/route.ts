@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
 
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log(`🔑 [DEV DEBUG] Generated OTP for ${lowerEmail}: ${otp}`);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
 
     // Save/upsert OTP
@@ -42,19 +43,9 @@ export async function POST(req: NextRequest) {
     });
 
     // Send email
-    const emailSubject = `${otp} is your Campus Task App verification code`;
-    const emailText = `Your Campus Task App verification OTP is ${otp}. It will expire in 10 minutes.`;
-    const emailHtml = `
-      <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px; max-width: 600px;">
-        <h2 style="color: #6366f1;">Campus Task App</h2>
-        <p>Hello student,</p>
-        <p>Use the following verification code to sign up or log in to your account:</p>
-        <div style="background-color: #f3f4f6; padding: 15px; font-size: 24px; font-weight: bold; text-align: center; border-radius: 4px; letter-spacing: 4px; margin: 20px 0; color: #1e1b4b;">
-          ${otp}
-        </div>
-        <p style="color: #6b7280; font-size: 14px;">This code will expire in 10 minutes. If you did not request this, you can safely ignore this email.</p>
-      </div>
-    `;
+    const emailSubject = `SideQuest code: ${otp}`;
+    const emailText = `Hello student. Your access code is: ${otp}. This code will expire in 10 minutes.`;
+    const emailHtml = `<p>Hello student.</p><p>Your access code is: <strong>${otp}</strong></p><p>This code will expire in 10 minutes.</p>`;
 
     await sendEmail({
       to: lowerEmail,
@@ -63,12 +54,12 @@ export async function POST(req: NextRequest) {
       html: emailHtml,
     });
 
-    const isDev = process.env.NODE_ENV !== 'production';
+    const isDev = false; // Forced false to turn off dev mode helpers as requested
     return NextResponse.json({
       success: true,
-      message: isDev ? `OTP sent! (Dev mode: OTP is ${otp})` : 'OTP sent to your email.',
+      message: 'OTP sent to your email.',
       // Return the OTP in dev response for automated testing or UI ease
-      ...(isDev && { devOtp: otp }),
+      ...(isDev ? { devOtp: otp } : {}),
     });
 
   } catch (error) {

@@ -2,19 +2,24 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { useToast } from '@/components/Toast';
 
 export default function NewTaskPage() {
   const router = useRouter();
+  const { toast } = useToast();
   
   // Form fields
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Errands');
+  const [category, setCategory] = useState('TUTORING');
   const [peopleNeeded, setPeopleNeeded] = useState(1);
   const [budget, setBudget] = useState('');
   const [deadline, setDeadline] = useState('');
-  const [location, setLocation] = useState('');
+  const [location, setLocation] = useState('MENS_HOSTEL');
   const [assignmentMode, setAssignmentMode] = useState('first_come');
+  const [isUrgent, setIsUrgent] = useState(false);
+  const [estimatedDuration, setEstimatedDuration] = useState('MIN_30');
   
   // File upload state
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -58,9 +63,9 @@ export default function NewTaskPage() {
     setPolicyError('');
 
     // Client-side validations
-    const parsedBudget = parseFloat(budget);
+    const parsedBudget = parseInt(budget, 10);
     if (isNaN(parsedBudget) || parsedBudget <= 0) {
-      setError('Budget must be a positive number greater than 0.');
+      setError('Offered Amount must be a positive integer greater than 0.');
       return;
     }
 
@@ -110,10 +115,12 @@ export default function NewTaskPage() {
           photo_url: photoUrl,
           category,
           people_needed: parsedPeople,
-          budget: parsedBudget,
+          offeredAmount: parsedBudget,
           deadline: deadlineDate.toISOString(),
           location: location.trim(),
           assignment_mode: assignmentMode,
+          isUrgent,
+          estimatedDuration,
         }),
       });
 
@@ -133,13 +140,14 @@ export default function NewTaskPage() {
 
     } catch (err: any) {
       setError(err.message || 'An error occurred while creating the task.');
+      toast(err.message || 'An error occurred while creating the task.', 'ERROR');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="page-container animate-fade-in" style={{ maxWidth: '700px', paddingBottom: '4rem' }}>
+    <div className="page-container route-entrance" style={{ maxWidth: '700px', paddingBottom: '4rem' }}>
       <h1 style={{
         fontSize: '2rem',
         marginBottom: '1.5rem',
@@ -161,7 +169,7 @@ export default function NewTaskPage() {
           fontSize: '0.85rem',
           marginBottom: '1.5rem'
         }}>
-          ⚠️ {error}
+          [Warning] {error}
         </div>
       )}
 
@@ -177,13 +185,13 @@ export default function NewTaskPage() {
           marginBottom: '1.5rem'
         }}>
           <h3 style={{ color: '#ef4444', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>🚫</span> Academic Policy Warning
+            Academic Policy Warning
           </h3>
           <p style={{ color: 'var(--text-secondary)' }}>{policyError}</p>
           <div style={{ marginTop: '1rem', padding: '0.75rem', borderRadius: 'var(--border-radius-sm)', background: 'rgba(255,255,255,0.03)', fontSize: '0.85rem' }}>
-            💡 <strong>Allowed:</strong> tutoring, explaining step-by-step problems, and proofreading essays.
+            <strong>Allowed:</strong> tutoring, explaining step-by-step problems, and proofreading essays.
             <br />
-            ❌ <strong>Prohibited:</strong> ghostwriting essays, taking exams/tests, or submitting graded assignments on behalf of others.
+            <strong>Prohibited:</strong> ghostwriting essays, taking exams/tests, or submitting graded assignments on behalf of others.
           </div>
         </div>
       )}
@@ -217,11 +225,12 @@ export default function NewTaskPage() {
               onChange={(e) => setDescription(e.target.value)}
               disabled={loading}
               maxLength={1000}
+              style={{ minHeight: '120px' }}
               required
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
             {/* Category */}
             <div className="form-group">
               <label className="form-label" htmlFor="task-cat">Category</label>
@@ -232,34 +241,65 @@ export default function NewTaskPage() {
                 onChange={(e) => setCategory(e.target.value)}
                 disabled={loading}
               >
-                <option value="Errands">Errands</option>
-                <option value="Second-hand items">Second-hand items</option>
-                <option value="Tutoring">Tutoring</option>
-                <option value="Freelancing">Freelancing</option>
-                <option value="Transportation">Transportation</option>
+                <option value="TUTORING">Tutoring</option>
+                <option value="FOOD_PICKUP">Food Pickup</option>
+                <option value="RIDE_SHARING">Ride Sharing</option>
+                <option value="PARCEL_DELIVERY">Parcel Delivery</option>
+                <option value="SHOPPING">Shopping</option>
+                <option value="CODING_HELP">Coding Help</option>
+                <option value="NOTES">Notes</option>
+                <option value="PRINTING">Printing</option>
+                <option value="HOSTEL_HELP">Hostel Help</option>
+                <option value="EVENT_ASSISTANCE">Event Assistance</option>
               </select>
             </div>
 
             {/* Location */}
             <div className="form-group">
               <label className="form-label" htmlFor="task-loc">Location</label>
-              <input
-                className="form-input"
+              <select
+                className="form-select"
                 id="task-loc"
-                type="text"
-                placeholder="e.g. SJT 405, Q Block Lobby"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 disabled={loading}
-                required
-              />
+              >
+                <option value="MENS_HOSTEL">Mens Hostel</option>
+                <option value="WOMENS_HOSTEL">Womens Hostel</option>
+                <option value="TT">TT</option>
+                <option value="LIBRARY">Library</option>
+                <option value="SJT">SJT</option>
+                <option value="SMV">SMV</option>
+                <option value="PRP">PRP</option>
+                <option value="MG_BLOCK">MG Block</option>
+                <option value="FOODYS">Foodys</option>
+                <option value="MAIN_GATE">Main Gate</option>
+              </select>
+            </div>
+
+            {/* Estimated Duration */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="task-duration">Est. Duration</label>
+              <select
+                className="form-select"
+                id="task-duration"
+                value={estimatedDuration}
+                onChange={(e) => setEstimatedDuration(e.target.value)}
+                disabled={loading}
+              >
+                <option value="MIN_10">10m</option>
+                <option value="MIN_30">30m</option>
+                <option value="HOUR_1">1h</option>
+                <option value="HALF_DAY">half day</option>
+                <option value="FULL_DAY">full day</option>
+              </select>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.25rem' }}>
-            {/* Budget */}
+            {/* Offered Amount */}
             <div className="form-group">
-              <label className="form-label" htmlFor="task-budget">Budget (₹ INR)</label>
+              <label className="form-label" htmlFor="task-budget">Offered Amount (₹ INR)</label>
               <input
                 className="form-input"
                 id="task-budget"
@@ -271,6 +311,9 @@ export default function NewTaskPage() {
                 disabled={loading}
                 required
               />
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                This is what you're offering to pay offline. Doers can counter-bid.
+              </p>
             </div>
 
             {/* People Needed */}
@@ -355,12 +398,16 @@ export default function NewTaskPage() {
                 </>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-                  <img
+                  <Image
                     src={imagePreview}
                     alt="Upload Preview"
+                    width={300}
+                    height={180}
+                    unoptimized
                     style={{
                       maxHeight: '180px',
                       maxWidth: '100%',
+                      height: 'auto',
                       borderRadius: 'var(--border-radius-md)',
                       border: '1px solid var(--glass-border)'
                     }}
@@ -379,18 +426,21 @@ export default function NewTaskPage() {
             </div>
           </div>
 
-          {/* Escrow Disclaimer */}
-          <div style={{
-            background: 'rgba(245, 158, 11, 0.05)',
-            border: '1px dashed rgba(245, 158, 11, 0.25)',
-            padding: '1rem',
-            borderRadius: 'var(--border-radius-md)',
-            fontSize: '0.85rem',
-            color: 'var(--text-secondary)',
-            marginBottom: '1.5rem',
-            lineHeight: 1.5
-          }}>
-            🔐 <strong>Escrow Lock:</strong> Upon posting, the budget amount (₹{budget || '0'}) will be immediately deducted from your wallet balance and held securely. The funds will be released to the doer(s) once the task is marked as completed. If you cancel the task, your money will be refunded (minus any cancellation penalties).
+
+          {/* Urgent Quest Toggle */}
+          <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', background: 'rgba(239, 68, 68, 0.03)', border: '1px solid rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: 'var(--border-radius-md)' }}>
+            <input
+              type="checkbox"
+              id="task-urgent"
+              checked={isUrgent}
+              onChange={(e) => setIsUrgent(e.target.checked)}
+              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              disabled={loading}
+            />
+            <div>
+              <label htmlFor="task-urgent" style={{ fontWeight: 700, color: 'var(--danger)', fontSize: '0.9rem', cursor: 'pointer' }}>🚨 Mark as Urgent Quest</label>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>This task will be highlighted with a red badge and prioritized on the browse feed.</p>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '1rem' }}>

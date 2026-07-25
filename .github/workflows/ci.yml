@@ -1,0 +1,54 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: sidequest_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/sidequest_test?schema=public
+      JWT_SECRET: super-secret-jwt-signing-key-for-test-environments
+      RESEND_API_KEY: re_12345
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Prisma Client Sync
+      run: npx prisma db push
+
+    - name: Run Business Tests
+      run: npm run test
+
+    - name: Verify Typescript Production Build
+      run: npm run build

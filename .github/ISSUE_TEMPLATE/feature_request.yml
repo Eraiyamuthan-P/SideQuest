@@ -1,0 +1,31 @@
+name: 💡 Feature Request
+description: Suggest an enhancement or a new feature to the SideQuest platform.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggesting new features keeps SideQuest growing!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a problem? Please describe.
+      placeholder: It's currently hard to track which hostels have the most tasks...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution or new layouts you'd like to see.
+      placeholder: Add a task count tag next to Mens Hostel and Womens Hostel in filters.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you've considered.
+    validations:
+      required: false

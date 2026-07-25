@@ -6,10 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsx src/tests/business.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
+    "google-auth-library": "^10.9.0",
     "jsonwebtoken": "^9.0.3",
     "next": "16.2.9",
     "nodemailer": "^9.0.1",

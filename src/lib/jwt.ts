@@ -6,6 +6,8 @@ export interface UserJWTPayload {
   userId: string;
   email: string;
   username: string;
+  role: string;
+  sessionVersion: number;
 }
 
 export function signToken(payload: UserJWTPayload): string {

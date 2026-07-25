@@ -25,8 +25,9 @@ export async function sendEmail({ to, subject, text, html }: SendEmailParams): P
         },
       });
 
+      const senderEmail = process.env.SENDER_EMAIL || 'noreply@vit-sidequest.ac.in';
       await transporter.sendMail({
-        from: '"Campus Task App" <noreply@vit-sidequest.ac.in>',
+        from: `"SideQuest" <${senderEmail}>`,
         to,
         subject,
         text,

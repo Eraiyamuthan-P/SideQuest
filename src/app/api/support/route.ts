@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import sendEmail from '@/lib/email';
 import { SupportTicketType } from '@prisma/client';
+import { notifyAllAdmins } from '@/lib/notification';
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,6 +39,15 @@ export async function POST(req: NextRequest) {
         message: message.trim(),
         status: 'open',
       },
+    });
+
+    // Notify all administrative operators
+    await notifyAllAdmins({
+      type: 'SYSTEM',
+      title: type === 'dispute' ? 'New Dispute Ticket' : `New Support Ticket: ${subject.slice(0, 40)}`,
+      message: `User @${sessionUser.username} logged: ${message.slice(0, 100)}`,
+      link: '/admin',
+      actorId: sessionUser.id,
     });
 
     // Email admin

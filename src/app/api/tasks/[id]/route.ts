@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
+import { TaskStatus, ApplicationStatus } from '@prisma/client';
 
 export async function GET(
   req: NextRequest,
@@ -26,7 +27,17 @@ export async function GET(
             verified: true,
             hostel_block: true,
             bio: true,
+            ratingAverage: true,
+            ratingCount: true,
           },
+        },
+        reviews: {
+          include: {
+            reviewer: {
+              select: { username: true },
+            },
+          },
+          orderBy: { created_at: 'asc' },
         },
       },
     });
@@ -46,26 +57,28 @@ export async function GET(
       if (isPoster) {
         // Poster can see all applications and offers
         applications = await prisma.taskApplication.findMany({
-          where: { task_id: id },
+          where: { taskId: id },
           include: {
-            applicant: {
+            doer: {
               select: {
                 id: true,
                 username: true,
                 verified: true,
                 hostel_block: true,
+                ratingAverage: true,
+                ratingCount: true,
               },
             },
           },
-          orderBy: { created_at: 'desc' },
+          orderBy: { createdAt: 'desc' },
         });
       } else {
         // Regular user can only see their own application
         const app = await prisma.taskApplication.findUnique({
           where: {
-            task_id_applicant_id: {
-              task_id: id,
-              applicant_id: sessionUser.id,
+            taskId_doerId: {
+              taskId: id,
+              doerId: sessionUser.id,
             },
           },
         });
@@ -77,7 +90,7 @@ export async function GET(
 
     // Count of total applications
     const totalApplicantsCount = await prisma.taskApplication.count({
-      where: { task_id: id },
+      where: { taskId: id },
     });
 
     return NextResponse.json({

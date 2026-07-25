@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
-import { ApplicationStatus } from '@prisma/client';
+import { ApplicationStatus, TaskStatus } from '@prisma/client';
 
 export async function GET() {
   try {
     const sessionUser = await getSessionUser();
-
-    if (!sessionUser || sessionUser.username !== 'vit_admin') {
+    if (!sessionUser || (sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'ADMIN' && sessionUser.role !== 'MODERATOR')) {
       return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
     }
 
@@ -23,13 +22,13 @@ export async function GET() {
 
     // Also fetch tasks that are in completed state (to easily find disputes)
     const completedTasks = await prisma.task.findMany({
-      where: { status: 'completed' },
+      where: { status: TaskStatus.COMPLETED },
       include: {
         poster: { select: { username: true } },
         applications: {
-          where: { status: ApplicationStatus.accepted },
+          where: { status: ApplicationStatus.ACCEPTED },
           include: {
-            applicant: { select: { username: true } },
+            doer: { select: { username: true } },
           },
         },
       },
@@ -46,24 +45,33 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   try {
     const sessionUser = await getSessionUser();
-
-    if (!sessionUser || sessionUser.username !== 'vit_admin') {
+    if (!sessionUser || (sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'ADMIN' && sessionUser.role !== 'MODERATOR')) {
       return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
     }
 
-    const { ticket_id, status, task_id, resolution } = await req.json();
+    const { ticket_id, status, task_id, resolution, reason } = await req.json();
 
     if (!ticket_id) {
       return NextResponse.json({ error: 'Ticket ID is required.' }, { status: 400 });
     }
 
+    // Reason validation (10-500 chars) is mandatory for resolving support tickets and disputes
+    if (!reason || typeof reason !== 'string' || reason.trim().length < 10 || reason.trim().length > 500) {
+      return NextResponse.json({ error: 'Administrative reason must be between 10 and 500 characters long.' }, { status: 400 });
+    }
+
     const ticket = await prisma.supportTicket.findUnique({
       where: { id: ticket_id },
+      include: {
+        user: { select: { email: true } }
+      }
     });
 
     if (!ticket) {
       return NextResponse.json({ error: 'Ticket not found.' }, { status: 404 });
     }
+
+    const ipAddress = req.headers.get('x-forwarded-for') || '127.0.0.1';
 
     // Handle dispute resolution credit adjustments if provided
     if (ticket.type === 'dispute' && task_id && resolution) {
@@ -71,7 +79,7 @@ export async function PUT(req: NextRequest) {
         where: { id: task_id },
         include: {
           applications: {
-            where: { status: ApplicationStatus.accepted },
+            where: { status: ApplicationStatus.ACCEPTED },
           },
         },
       });
@@ -85,64 +93,87 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: 'No accepted doer found for this task.' }, { status: 400 });
       }
 
-      const finalPayment = task.payment_amount || task.budget;
-
       await prisma.$transaction(async (tx) => {
         if (resolution === 'favor_poster') {
           // Poster wins:
-          // 1. Return task payment amount from Doer's credits back to Poster
+          // 1. Penalize Doer (-15 credits)
           await tx.user.update({
-            where: { id: acceptedApp.applicant_id },
-            data: { balance: { decrement: finalPayment } },
-          });
-          await tx.transaction.create({
-            data: {
-              user_id: acceptedApp.applicant_id,
-              amount: -finalPayment,
-              reason: `Dispute Resolution: Escrow returned to poster for task "${task.title}"`,
-            },
+            where: { id: acceptedApp.doerId },
+            data: { credits: { decrement: 15 } },
           });
 
-          await tx.user.update({
-            where: { id: task.poster_id },
-            data: { balance: { increment: finalPayment } },
-          });
-          await tx.transaction.create({
-            data: {
-              user_id: task.poster_id,
-              amount: finalPayment,
-              reason: `Dispute Resolution: Refunded ₹${finalPayment} for task "${task.title}"`,
-            },
+          // 2. Cancel the task and reject application
+          await tx.task.update({
+            where: { id: task_id },
+            data: { status: TaskStatus.CANCELLED },
           });
 
-          // 2. Penalize Doer (-₹15)
-          await tx.user.update({
-            where: { id: acceptedApp.applicant_id },
-            data: { balance: { decrement: 15 } },
+          await tx.taskApplication.update({
+            where: { id: acceptedApp.id },
+            data: { status: ApplicationStatus.REJECTED },
           });
-          await tx.transaction.create({
+
+          // Record log
+          await tx.auditLog.create({
             data: {
-              user_id: acceptedApp.applicant_id,
-              amount: -15,
-              reason: `Penalty: Dispute resolved against you (Doer) on task "${task.title}" (-₹15)`,
-            },
+              actorId: sessionUser.id,
+              actorEmail: sessionUser.email,
+              targetId: task_id,
+              targetEmail: ticket.user.email,
+              action: 'DISPUTE_RESOLUTION_FAVOR_POSTER',
+              reason: reason.trim(),
+              metadata: { ticketId: ticket_id, resolution: 'favor_poster', oldStatus: TaskStatus.COMPLETED, newStatus: TaskStatus.CANCELLED },
+              ipAddress: ipAddress,
+            }
           });
 
         } else if (resolution === 'favor_doer') {
           // Doer wins:
-          // 1. Doer keeps the balance (already transferred on completion).
-          // 2. Penalize Poster (-₹15)
+          // 1. Penalize Poster (-15 credits)
           await tx.user.update({
             where: { id: task.poster_id },
-            data: { balance: { decrement: 15 } },
+            data: { credits: { decrement: 15 } },
           });
-          await tx.transaction.create({
+
+          // 2. Award Doer standard completion credits (+10)
+          await tx.user.update({
+            where: { id: acceptedApp.doerId },
+            data: { credits: { increment: 10 } },
+          });
+
+          // 3. Complete the task
+          await tx.task.update({
+            where: { id: task_id },
+            data: { status: TaskStatus.COMPLETED },
+          });
+
+          // Record log
+          await tx.auditLog.create({
             data: {
-              user_id: task.poster_id,
-              amount: -15,
-              reason: `Penalty: Dispute resolved against you (Poster) on task "${task.title}" (-₹15)`,
-            },
+              actorId: sessionUser.id,
+              actorEmail: sessionUser.email,
+              targetId: task_id,
+              targetEmail: ticket.user.email,
+              action: 'DISPUTE_RESOLUTION_FAVOR_DOER',
+              reason: reason.trim(),
+              metadata: { ticketId: ticket_id, resolution: 'favor_doer', oldStatus: TaskStatus.COMPLETED, newStatus: TaskStatus.COMPLETED },
+              ipAddress: ipAddress,
+            }
           });
+        }
+      });
+    } else {
+      // General ticket resolution audit log
+      await prisma.auditLog.create({
+        data: {
+          actorId: sessionUser.id,
+          actorEmail: sessionUser.email,
+          targetId: ticket_id,
+          targetEmail: ticket.user.email,
+          action: 'SUPPORT_TICKET_RESOLVED',
+          reason: reason.trim(),
+          metadata: { ticketId: ticket_id, type: ticket.type, oldStatus: ticket.status, newStatus: status || 'resolved' },
+          ipAddress: ipAddress,
         }
       });
     }

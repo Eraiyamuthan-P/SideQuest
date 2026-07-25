@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/components/Toast';
+import { EmptyState } from '@/components/EmptyState';
 
 interface Ticket {
   id: string;
@@ -28,6 +30,7 @@ interface CompletedTask {
 
 export default function SupportPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   
   // Student Ticket submission states
@@ -44,8 +47,6 @@ export default function SupportPage() {
   // Loading/UX states
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Fetch session and support data
   const loadData = async () => {
@@ -70,15 +71,9 @@ export default function SupportPage() {
             setSelectedTaskForDispute(adminData.completedTasks[0].id);
           }
         }
-      } else {
-        // Fetch user tickets (client-side filter or re-fetch)
-        // Since we retrieve all tickets for simplicity in v1, we fetch user's tickets
-        // Wait, standard user doesn't have access to /api/admin/support.
-        // We will just let them submit tickets. We can show their submission confirmations.
       }
     } catch (err) {
-      console.error(err);
-      setError('Failed to load support page details.');
+      toast('Failed to load support page details.', 'ERROR');
     } finally {
       setLoading(false);
     }
@@ -91,8 +86,6 @@ export default function SupportPage() {
   // Submit Client Ticket
   const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
     setActionLoading(true);
 
     try {
@@ -108,11 +101,11 @@ export default function SupportPage() {
         throw new Error(data.error || 'Failed to submit ticket');
       }
 
-      setSuccess('Your support ticket has been submitted to VIT Admin. We will review it shortly!');
+      toast('Your support ticket has been submitted to VIT Admin successfully!', 'SUCCESS');
       setSubject('');
       setMessage('');
     } catch (err: any) {
-      setError(err.message || 'An error occurred.');
+      toast(err.message || 'An error occurred.', 'ERROR');
     } finally {
       setActionLoading(false);
     }
@@ -120,13 +113,19 @@ export default function SupportPage() {
 
   // Resolve Ticket (Admin Action)
   const handleResolveTicket = async (ticketId: string, isDispute: boolean) => {
-    setError('');
-    setSuccess('');
+    const reason = prompt('Enter justification reason (10 to 500 characters) to resolve this ticket:');
+    if (reason === null) return;
+    if (reason.trim().length < 10 || reason.trim().length > 500) {
+      alert('Action blocked: administrative reason must be between 10 and 500 characters long.');
+      return;
+    }
+
     setActionLoading(true);
 
     const body: any = {
       ticket_id: ticketId,
       status: 'resolved',
+      reason: reason.trim(),
     };
 
     if (isDispute) {
@@ -147,13 +146,14 @@ export default function SupportPage() {
         throw new Error(data.error || 'Failed to resolve ticket.');
       }
 
-      setSuccess(isDispute 
+      toast(isDispute 
         ? `Dispute resolved successfully! ${disputeResolution === 'favor_poster' ? 'Refunded Poster & Penalized Doer (-15)' : 'Penalized Poster (-15)'}`
-        : 'Ticket marked resolved.'
+        : 'Ticket marked resolved.',
+        'SUCCESS'
       );
       loadData();
     } catch (err: any) {
-      setError(err.message || 'Failed to update ticket.');
+      toast(err.message || 'Failed to update ticket.', 'ERROR');
     } finally {
       setActionLoading(false);
     }
@@ -170,7 +170,7 @@ export default function SupportPage() {
   const isAdmin = currentUser?.username === 'vit_admin';
 
   return (
-    <div className="page-container animate-fade-in" style={{ paddingBottom: '5rem' }}>
+    <div className="page-container route-entrance" style={{ paddingBottom: '5rem' }}>
       
       <h1 style={{
         fontSize: '2rem',
@@ -182,18 +182,6 @@ export default function SupportPage() {
       }}>
         {isAdmin ? 'Admin Support Ticket Center' : 'Support & Feedback Portal'}
       </h1>
-
-      {error && (
-        <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#f87171', padding: '0.75rem 1rem', borderRadius: 'var(--border-radius-md)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-          ⚠️ {error}
-        </div>
-      )}
-
-      {success && (
-        <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#34d399', padding: '0.75rem 1rem', borderRadius: 'var(--border-radius-md)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-          ✓ {success}
-        </div>
-      )}
 
       {isAdmin ? (
         /* --- ADMIN DASHBOARD --- */
@@ -308,9 +296,12 @@ export default function SupportPage() {
                 ))}
               </div>
             ) : (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>
-                No support tickets available.
-              </p>
+              <EmptyState
+                title="No support tickets"
+                description="Everything looks clear! There are no unresolved support tickets currently."
+                actionText="Sync Live Logs"
+                onActionClick={loadData}
+              />
             )}
           </div>
         </div>

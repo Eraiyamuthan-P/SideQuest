@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getSessionUser } from '@/lib/auth';
+import { TaskStatus, ApplicationStatus } from '@prisma/client';
 
 export async function GET(
   req: NextRequest,
@@ -13,6 +15,9 @@ export async function GET(
       return NextResponse.json({ error: 'Username is required' }, { status: 400 });
     }
 
+    const sessionUser = await getSessionUser();
+    const isOwner = sessionUser ? sessionUser.username === username : false;
+
     const user = await prisma.user.findUnique({
       where: { username },
       select: {
@@ -20,10 +25,14 @@ export async function GET(
         username: true,
         email: true,
         verified: true,
-        balance: true,
+        credits: true,
+        ratingAverage: true,
+        ratingCount: true,
         bio: true,
         hostel_block: true,
         created_at: true,
+        availability: true,
+        skills: true,
       },
     });
 
@@ -39,12 +48,12 @@ export async function GET(
 
     // Completed posted tasks
     const postedCompleted = await prisma.task.count({
-      where: { poster_id: user.id, status: 'completed' },
+      where: { poster_id: user.id, status: TaskStatus.COMPLETED },
     });
 
     // Cancelled posted tasks
     const postedCancelled = await prisma.task.count({
-      where: { poster_id: user.id, status: 'cancelled' },
+      where: { poster_id: user.id, status: TaskStatus.CANCELLED },
     });
 
     const posterClosedTotal = postedCompleted + postedCancelled;
@@ -77,25 +86,18 @@ export async function GET(
     // Tasks completed as doer
     const doerCompleted = await prisma.task.count({
       where: {
-        status: 'completed',
+        status: TaskStatus.COMPLETED,
         applications: {
           some: {
-            applicant_id: user.id,
-            status: 'accepted',
+            doerId: user.id,
+            status: ApplicationStatus.ACCEPTED,
           },
         },
       },
     });
 
-    // Count doer cancellations based on transactions
-    const doerCancelled = await prisma.transaction.count({
-      where: {
-        user_id: user.id,
-        reason: {
-          contains: 'Cancelled assignment',
-        },
-      },
-    });
+    // Count doer cancellations is 0 since Transactions are removed
+    const doerCancelled = 0;
 
     const doerClosedTotal = doerCompleted + doerCancelled;
     const doerCompletionRate = doerClosedTotal > 0
@@ -129,11 +131,11 @@ export async function GET(
     // Extract dynamic skills based on task categories completed
     const completedTasksForSkills = await prisma.task.findMany({
       where: {
-        status: 'completed',
+        status: TaskStatus.COMPLETED,
         applications: {
           some: {
-            applicant_id: user.id,
-            status: 'accepted',
+            doerId: user.id,
+            status: ApplicationStatus.ACCEPTED,
           },
         },
       },
@@ -141,7 +143,7 @@ export async function GET(
       distinct: ['category'],
     });
     
-    const skillTags = completedTasksForSkills.map(t => t.category);
+    const skillTags = completedTasksForSkills.map(t => t.category as string);
     // Add default tags based on bio keywords if available
     const bioText = (user.bio || '').toLowerCase();
     const commonSkills = ['java', 'python', 'math', 'calculus', 'physics', 'proofreading', 'editing', 'drawing', 'coding', 'react'];
@@ -158,7 +160,9 @@ export async function GET(
         username: user.username,
         email: user.email,
         verified: user.verified,
-        balance: user.balance,
+        credits: user.credits,
+        ratingAverage: user.ratingAverage,
+        ratingCount: user.ratingCount,
         bio: user.bio,
         hostel_block: user.hostel_block,
         created_at: user.created_at,

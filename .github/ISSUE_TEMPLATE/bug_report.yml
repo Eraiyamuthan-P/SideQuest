@@ -1,0 +1,35 @@
+name: 🐛 Bug Report
+description: Report a bug or page glitch to help us maintain SideQuest stability.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting this issue! Please provide as much details as possible.
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of the bug.
+      placeholder: What goes wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we replicate this bug on our local setups?
+      placeholder: |
+        1. Go to '/settings'
+        2. Click on 'Logout everywhere'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Browser / Device Details
+      description: Which browser or viewport layout was this tested on?
+      placeholder: Chrome / Safari (Mobile viewport 390px)
+    validations:
+      required: false

@@ -1,4 +1,5 @@
 import prisma from './prisma';
+import { TaskStatus, ApplicationStatus } from '@prisma/client';
 
 export async function checkAndAwardBadges(userId: string): Promise<string[]> {
   try {
@@ -12,11 +13,11 @@ export async function checkAndAwardBadges(userId: string): Promise<string[]> {
     // 1. Check Doer Thresholds (tasks completed as doer)
     const completedDoerCount = await prisma.task.count({
       where: {
-        status: 'completed',
+        status: TaskStatus.COMPLETED,
         applications: {
           some: {
-            applicant_id: userId,
-            status: 'accepted',
+            doerId: userId,
+            status: ApplicationStatus.ACCEPTED,
           },
         },
       },
@@ -39,7 +40,7 @@ export async function checkAndAwardBadges(userId: string): Promise<string[]> {
     const completedPosterCount = await prisma.task.count({
       where: {
         poster_id: userId,
-        status: 'completed',
+        status: TaskStatus.COMPLETED,
       },
     });
 

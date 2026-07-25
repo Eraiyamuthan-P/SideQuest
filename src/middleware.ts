@@ -1,33 +1,73 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+function parseJwt(token: string) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+}
+
 export function middleware(request: NextRequest) {
   const token = request.cookies.get('auth_token')?.value;
   const { pathname } = request.nextUrl;
 
-  // Protected paths requiring active session
-  const protectedPaths = ['/settings', '/chat', '/support', '/leaderboard'];
-  const isProtected = 
-    protectedPaths.some(path => pathname.startsWith(path)) || 
-    pathname.startsWith('/tasks/'); // protect details/creation
+  const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
+  const isTasksNew = pathname === '/tasks/new';
+  const isProtectedPath = 
+    pathname.startsWith('/settings') || 
+    pathname.startsWith('/chat') || 
+    pathname.startsWith('/support') || 
+    pathname.startsWith('/leaderboard') || 
+    pathname.startsWith('/tasks');
 
-  // If path is protected and no token, redirect to login
-  if (isProtected && !token && !pathname.endsWith('/new')) {
-    // Note: let /tasks/new be protected, let's check
-    const url = request.nextUrl.clone();
-    url.pathname = '/auth';
-    return NextResponse.redirect(url);
+  // Verify authentication session
+  if (!token) {
+    if (isAdminRoute || isTasksNew || isProtectedPath) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Unauthorized. Please sign in.' }, { status: 401 });
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = '/auth';
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
   }
-  
-  if (pathname === '/tasks/new' && !token) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/auth';
-    return NextResponse.redirect(url);
+
+  // Verify Role-Based Authorization
+  if (isAdminRoute) {
+    const payload = parseJwt(token);
+    const role = payload?.role;
+    if (role !== 'SUPER_ADMIN' && role !== 'ADMIN' && role !== 'MODERATOR') {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      return NextResponse.redirect(url);
+    }
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|uploads).*)'],
+  matcher: [
+    '/admin/:path*',
+    '/api/admin/:path*',
+    '/settings/:path*',
+    '/chat/:path*',
+    '/support/:path*',
+    '/leaderboard/:path*',
+    '/tasks/:path*',
+  ],
 };

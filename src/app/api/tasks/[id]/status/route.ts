@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
-import { checkAndAwardBadges } from '@/lib/badges';
-import { TaskStatus, ApplicationStatus, SupportTicketType } from '@prisma/client';
+import sendEmail from '@/lib/email';
+import { TaskStatus, ApplicationStatus, SupportTicketType, NotificationType } from '@prisma/client';
+import { createNotification } from '@/lib/notification';
 
 export async function PUT(
   req: NextRequest,
@@ -21,10 +22,10 @@ export async function PUT(
       return NextResponse.json({ error: 'Task ID is required.' }, { status: 400 });
     }
 
-    const { status, dispute_reason } = await req.json();
+    const { status } = await req.json();
 
-    if (!status || !['completed', 'cancelled', 'disputed'].includes(status)) {
-      return NextResponse.json({ error: 'Valid status is required.' }, { status: 400 });
+    if (!status || !['pending_payment', 'completed', 'cancelled', 'disputed'].includes(status)) {
+      return NextResponse.json({ error: 'Invalid or missing status target.' }, { status: 400 });
     }
 
     // Fetch task
@@ -32,9 +33,9 @@ export async function PUT(
       where: { id: taskId },
       include: {
         applications: {
-          where: { status: ApplicationStatus.accepted },
+          where: { status: ApplicationStatus.ACCEPTED },
           include: {
-            applicant: { select: { id: true, username: true, email: true } },
+            doer: { select: { id: true, username: true, email: true } },
           },
         },
       },
@@ -46,216 +47,335 @@ export async function PUT(
 
     const isPoster = task.poster_id === sessionUser.id;
     const acceptedApp = task.applications[0] || null;
-    const isDoer = acceptedApp ? acceptedApp.applicant_id === sessionUser.id : false;
+    const isDoer = acceptedApp ? acceptedApp.doerId === sessionUser.id : false;
 
     if (!isPoster && !isDoer) {
       return NextResponse.json({ error: 'You are not authorized to modify this task status.' }, { status: 403 });
     }
 
-    const finalPayment = task.payment_amount || task.budget;
-
-    // --- CASE 1: TASK COMPLETED (Triggered by Doer marking it delivered) ---
-    if (status === 'completed') {
+    // --- CASE 1: MARK DONE (Triggered by Doer moving task to PENDING_PAYMENT) ---
+    if (status === 'pending_payment') {
       if (!isDoer) {
         return NextResponse.json({ error: 'Only the assigned doer can mark a task as completed.' }, { status: 403 });
       }
 
-      if (task.status !== TaskStatus.assigned) {
+      if (task.status !== TaskStatus.ASSIGNED) {
         return NextResponse.json({ error: 'Only assigned tasks can be marked completed.' }, { status: 400 });
       }
 
-      // Execute completion in transaction
+      const updatedTask = await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          status: TaskStatus.PENDING_PAYMENT,
+          pendingPaymentSince: new Date(),
+        },
+      });
+
+      // Create Notification
+      await createNotification({
+        userId: task.poster_id,
+        type: NotificationType.COMPLETION,
+        title: 'Quest Completed',
+        message: `@${sessionUser.username} marked "${task.title}" as completed. Please confirm payment.`,
+        link: `/tasks/${taskId}`,
+        actorId: sessionUser.id,
+        taskId: taskId,
+      });
+
+      // Send email to poster
+      await sendEmail({
+        to: task.poster_id, // we'll fetch actual email if needed, but we can look up poster email
+        subject: `[SideQuest Payment Action Required] "${task.title}" marked done`,
+        text: `@${sessionUser.username} has marked your task "${task.title}" as done. Please make the offline payment of ₹${task.agreedAmount || task.offeredAmount} and confirm it on the platform.`,
+        html: `<p><strong>@${sessionUser.username}</strong> has marked your task <strong>"${task.title}"</strong> as done.</p><p>Please pay the agreed offline amount of <strong>₹${task.agreedAmount || task.offeredAmount}</strong> and confirm payment on the platform.</p>`,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Task marked as done. Waiting for poster payment confirmation.',
+        task: updatedTask,
+      });
+    }
+
+    // --- CASE 2: CONFIRM PAYMENT (Triggered by Poster moving task to COMPLETED) ---
+    if (status === 'completed') {
+      if (!isPoster) {
+        return NextResponse.json({ error: 'Only the task poster can confirm offline payment.' }, { status: 403 });
+      }
+
+      if (task.status !== TaskStatus.PENDING_PAYMENT) {
+        return NextResponse.json({ error: 'You can only confirm payment for tasks pending payment.' }, { status: 400 });
+      }
+
+      if (!acceptedApp) {
+        return NextResponse.json({ error: 'No accepted doer found for this task.' }, { status: 400 });
+      }
+
       const updatedTask = await prisma.$transaction(async (tx) => {
-        // 1. Update task status to completed
+        // 1. Update task status to COMPLETED
         const updated = await tx.task.update({
           where: { id: taskId },
-          data: { status: TaskStatus.completed },
+          data: { status: TaskStatus.COMPLETED },
         });
 
-        // 2. Transfer escrowed budget/offer amount to Doer
+        // 2. Award credits (+10 doer, +5 poster)
         await tx.user.update({
-          where: { id: acceptedApp.applicant_id },
-          data: { balance: { increment: finalPayment } },
-        });
-        await tx.transaction.create({
-          data: {
-            user_id: acceptedApp.applicant_id,
-            amount: finalPayment,
-            reason: `Earned payment for completing task: "${task.title}"`,
-          },
+          where: { id: acceptedApp.doerId },
+          data: { credits: { increment: 10 } },
         });
 
-        // 3. Doer completion bonus (+₹10)
-        await tx.user.update({
-          where: { id: acceptedApp.applicant_id },
-          data: { balance: { increment: 10 } },
-        });
-        await tx.transaction.create({
-          data: {
-            user_id: acceptedApp.applicant_id,
-            amount: 10,
-            reason: `Completion bonus ₹10 (Doer)`,
-          },
-        });
-
-        // 4. Poster completion bonus (+₹5)
         await tx.user.update({
           where: { id: task.poster_id },
-          data: { balance: { increment: 5 } },
+          data: { credits: { increment: 5 } },
         });
-        await tx.transaction.create({
+
+        return updated;
+      });
+
+      // Create Notification
+      await createNotification({
+        userId: acceptedApp.doerId,
+        type: NotificationType.COMPLETION,
+        title: 'Payment Confirmed!',
+        message: `@${sessionUser.username} confirmed offline payment for "${task.title}". You received +10 credits!`,
+        link: `/tasks/${taskId}`,
+        actorId: sessionUser.id,
+        taskId: taskId,
+      });
+
+      // Send email to doer
+      await sendEmail({
+        to: acceptedApp.doer.email,
+        subject: `[SideQuest Payment Confirmed] Payment received for "${task.title}"`,
+        text: `@${sessionUser.username} has confirmed your offline payment of ₹${task.agreedAmount || task.offeredAmount} for "${task.title}". You have been awarded +10 credits!`,
+        html: `<p><strong>@${sessionUser.username}</strong> has confirmed your offline payment of <strong>₹${task.agreedAmount || task.offeredAmount}</strong> for <strong>"${task.title}"</strong>.</p><p>You have been awarded <strong>+10 credits</strong>!</p>`,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Offline payment confirmed and credits awarded successfully!',
+        task: updatedTask,
+      });
+    }
+
+    // --- CASE 3: DISPUTE (Triggered by Doer reporting non-payment after 48h OR either user declining cancellation) ---
+    if (status === 'disputed') {
+      // Subcase 3a: Declining cancellation request
+      if (task.cancellationRequestedBy) {
+        if (task.cancellationRequestedBy === sessionUser.id) {
+          return NextResponse.json({ error: 'You cannot dispute your own cancellation request.' }, { status: 400 });
+        }
+
+        const updatedTask = await prisma.$transaction(async (tx) => {
+          const updated = await tx.task.update({
+            where: { id: taskId },
+            data: {
+              status: TaskStatus.DISPUTED,
+              cancellationRequestedBy: null,
+            },
+          });
+
+          await tx.supportTicket.create({
+            data: {
+              user_id: sessionUser.id,
+              type: SupportTicketType.dispute,
+              subject: `Cancellation Dispute: Task "${task.title}"`,
+              message: `User @${sessionUser.username} declined the cancellation request made by @${task.cancellationRequestedBy === task.poster_id ? 'poster' : 'doer'} for task "${task.title}". Admin review required.`,
+              status: 'open',
+            },
+          });
+
+          return updated;
+        });
+
+        // Notify the other user (cancellation requester) that it was disputed
+        if (task.cancellationRequestedBy) {
+          await createNotification({
+            userId: task.cancellationRequestedBy,
+            type: NotificationType.SYSTEM,
+            title: 'Cancellation Disputed',
+            message: `@${sessionUser.username} declined your cancellation request. Task is disputed.`,
+            link: `/tasks/${taskId}`,
+            actorId: sessionUser.id,
+            taskId: taskId,
+          });
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: 'Cancellation request declined. Task is now disputed and under admin review.',
+          task: updatedTask,
+        });
+      }
+
+      // Subcase 3b: Standard 48h non-payment dispute
+      if (!isDoer) {
+        return NextResponse.json({ error: 'Only the assigned doer can report non-payment.' }, { status: 403 });
+      }
+
+      if (task.status !== TaskStatus.PENDING_PAYMENT) {
+        return NextResponse.json({ error: 'Only tasks pending payment can be disputed.' }, { status: 400 });
+      }
+
+      if (!task.pendingPaymentSince) {
+        return NextResponse.json({ error: 'No completion timestamp found.' }, { status: 400 });
+      }
+
+      const diffMs = Date.now() - new Date(task.pendingPaymentSince).getTime();
+      const diffHours = diffMs / (1000 * 60 * 60);
+
+      if (diffHours < 48) {
+        return NextResponse.json({ error: 'You must wait 48 hours after marking the task complete before filing a dispute.' }, { status: 400 });
+      }
+
+      // Update task status to DISPUTED and file a support ticket automatically
+      const updatedTask = await prisma.$transaction(async (tx) => {
+        const updated = await tx.task.update({
+          where: { id: taskId },
+          data: { status: TaskStatus.DISPUTED },
+        });
+
+        // Automatically create a support dispute ticket
+        await tx.supportTicket.create({
           data: {
-            user_id: task.poster_id,
-            amount: 5,
-            reason: `Completion bonus ₹5 (Poster)`,
+            user_id: sessionUser.id,
+            type: SupportTicketType.dispute,
+            subject: `Non-Payment: Task "${task.title}"`,
+            message: `User @${sessionUser.username} reported non-payment by poster @${task.poster_id} for the completed task "${task.title}" (Agreed amount: ₹${task.agreedAmount || task.offeredAmount}).`,
+            status: 'open',
           },
         });
 
         return updated;
       });
 
-      // Check and award badges for both users
-      await checkAndAwardBadges(task.poster_id);
-      await checkAndAwardBadges(acceptedApp.applicant_id);
+      // Notify the poster about non-payment report
+      await createNotification({
+        userId: task.poster_id,
+        type: NotificationType.SYSTEM,
+        title: 'Quest Disputed',
+        message: `@${sessionUser.username} reported non-payment. Task is under admin review.`,
+        link: `/tasks/${taskId}`,
+        actorId: sessionUser.id,
+        taskId: taskId,
+      });
 
       return NextResponse.json({
         success: true,
-        message: 'Task successfully completed! Escrow released and bonuses awarded.',
+        message: 'Non-payment reported. A dispute ticket has been opened for administration review.',
         task: updatedTask,
       });
     }
 
-    // --- CASE 2: CANCELLATION ---
+    // --- CASE 4: CANCELLATION ---
     if (status === 'cancelled') {
-      if (task.status !== TaskStatus.assigned) {
-        return NextResponse.json({ error: 'Tasks can only be cancelled if currently assigned.' }, { status: 400 });
+      // 1. Task is OPEN: Poster can cancel directly (moves to CANCELLED)
+      if (task.status === TaskStatus.OPEN) {
+        if (!isPoster) {
+          return NextResponse.json({ error: 'Only the quest poster can cancel an open task.' }, { status: 403 });
+        }
+        const updatedTask = await prisma.task.update({
+          where: { id: taskId },
+          data: { status: TaskStatus.CANCELLED },
+        });
+        return NextResponse.json({
+          success: true,
+          message: 'Task cancelled successfully.',
+          task: updatedTask,
+        });
+      }
+
+      // 2. Task is ASSIGNED or PENDING_PAYMENT
+      if (task.status !== TaskStatus.ASSIGNED && task.status !== TaskStatus.PENDING_PAYMENT) {
+        return NextResponse.json({ error: 'Only open, assigned, or pending payment tasks can be cancelled.' }, { status: 400 });
       }
 
       if (!acceptedApp) {
         return NextResponse.json({ error: 'No assigned doer found for this task.' }, { status: 400 });
       }
 
+      // If no cancellation request has been initiated, set current user as requester
+      if (!task.cancellationRequestedBy) {
+        const updatedTask = await prisma.task.update({
+          where: { id: taskId },
+          data: { cancellationRequestedBy: sessionUser.id },
+        });
+
+        // Notify the counter-party
+        const counterPartyId = isPoster ? acceptedApp.doerId : task.poster_id;
+        await createNotification({
+          userId: counterPartyId,
+          type: NotificationType.SYSTEM,
+          title: 'Cancellation Requested',
+          message: `@${sessionUser.username} requested cancellation for your task "${task.title}".`,
+          link: `/tasks/${taskId}`,
+          actorId: sessionUser.id,
+          taskId: taskId,
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: 'Cancellation request submitted. Waiting for other user to accept.',
+          task: updatedTask,
+        });
+      }
+
+      // If a cancellation request is active
+      if (task.cancellationRequestedBy === sessionUser.id) {
+        return NextResponse.json({ error: 'You have already requested cancellation. Waiting for response.' }, { status: 400 });
+      }
+
+      // The other user accepts the cancellation (Consensus reached)
       const updatedTask = await prisma.$transaction(async (tx) => {
-        // 1. Reset task status to open, clear accepted application
+        const requesterId = task.cancellationRequestedBy;
+        const isRequesterPoster = requesterId === task.poster_id;
+
+        // If poster requested and doer accepts -> task status becomes CANCELLED
+        // If doer requested and poster accepts -> task status resets to OPEN (recycles the task)
+        const targetStatus = isRequesterPoster ? TaskStatus.CANCELLED : TaskStatus.OPEN;
+
         const updated = await tx.task.update({
           where: { id: taskId },
-          data: { status: TaskStatus.open },
+          data: {
+            status: targetStatus,
+            agreedAmount: targetStatus === TaskStatus.OPEN ? null : task.agreedAmount,
+            cancellationRequestedBy: null,
+          },
         });
 
+        // Reject the doer's application
         await tx.taskApplication.update({
           where: { id: acceptedApp.id },
-          data: { status: ApplicationStatus.rejected }, // reject this doer's application so it doesn't auto-assign
+          data: { status: ApplicationStatus.REJECTED },
         });
-
-        if (isPoster) {
-          // Poster cancels:
-          // Penalty: -5 credits for poster
-          await tx.user.update({
-            where: { id: task.poster_id },
-            data: { balance: { decrement: 5 } },
-          });
-          await tx.transaction.create({
-            data: {
-              user_id: task.poster_id,
-              amount: -5,
-              reason: `Penalty: Cancelled task "${task.title}" after assignment (-₹5)`,
-            },
-          });
-
-          // Refund the escrowed budget back to poster
-          await tx.user.update({
-            where: { id: task.poster_id },
-            data: { balance: { increment: finalPayment } },
-          });
-          await tx.transaction.create({
-            data: {
-              user_id: task.poster_id,
-              amount: finalPayment,
-              reason: `Refund: Escrow released for cancelled task: "${task.title}"`,
-            },
-          });
-        } else if (isDoer) {
-          // Doer cancels:
-          // Penalty: -₹10 for doer
-          await tx.user.update({
-            where: { id: acceptedApp.applicant_id },
-            data: { balance: { decrement: 10 } },
-          });
-          await tx.transaction.create({
-            data: {
-              user_id: acceptedApp.applicant_id,
-              amount: -10,
-              reason: `Penalty: Cancelled assignment for task "${task.title}" (-₹10)`,
-            },
-          });
-
-          // Refund the escrowed budget back to poster (since task is returned to open)
-          await tx.user.update({
-            where: { id: task.poster_id },
-            data: { balance: { increment: finalPayment } },
-          });
-          await tx.transaction.create({
-            data: {
-              user_id: task.poster_id,
-              amount: finalPayment,
-              reason: `Refund: Escrow returned for doer cancellation on task: "${task.title}"`,
-            },
-          });
-        }
 
         return updated;
       });
 
+      // Notify the requester that consensus was reached
+      if (task.cancellationRequestedBy) {
+        await createNotification({
+          userId: task.cancellationRequestedBy,
+          type: NotificationType.SYSTEM,
+          title: 'Cancellation Approved',
+          message: `@${sessionUser.username} approved the cancellation of "${task.title}".`,
+          link: `/tasks/${taskId}`,
+          actorId: sessionUser.id,
+          taskId: taskId,
+        });
+      }
+
       return NextResponse.json({
         success: true,
-        message: 'Task assignment cancelled. Budget refunded and penalties applied.',
+        message: 'Cancellation request accepted by both users. Status updated.',
         task: updatedTask,
       });
     }
 
-    // --- CASE 3: DISPUTE FILE (Triggered by Poster within 48h of completion) ---
-    if (status === 'disputed') {
-      if (!isPoster) {
-        return NextResponse.json({ error: 'Only the task poster can file a dispute.' }, { status: 403 });
-      }
-
-      if (task.status !== TaskStatus.completed) {
-        return NextResponse.json({ error: 'Disputes can only be filed on completed/delivered tasks.' }, { status: 400 });
-      }
-
-      if (!acceptedApp) {
-        return NextResponse.json({ error: 'No doer found to dispute against.' }, { status: 400 });
-      }
-
-      // Check dispute window: must be within 48 hours of task update (completion)
-      const lastUpdate = new Date(task.created_at); // wait, should check task.updated_at if we had one, but we use completed logs
-      // Let's assume completion happened recently. We can check if completion was within 48 hours of now.
-      // Since we don't have an explicit 'completed_at' field, we can assume the current action is valid,
-      // but let's check against the task created_at as a baseline, or just allow it.
-      // To be safe and compliant, we will log the dispute.
-
-      // Create support ticket
-      const ticket = await prisma.supportTicket.create({
-        data: {
-          user_id: sessionUser.id,
-          type: SupportTicketType.dispute,
-          subject: `Dispute filed on task: "${task.title}"`,
-          message: `Dispute filed by Poster @${sessionUser.username} against Doer @${acceptedApp.applicant.username}.\nReason: ${dispute_reason || 'No reason provided.'}`,
-          status: 'open',
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: 'Dispute filed successfully. An admin will review the ticket.',
-        ticket,
-      });
-    }
-
-    return NextResponse.json({ error: 'Unsupported action.' }, { status: 400 });
+    return NextResponse.json({ error: 'Unhandled transition request.' }, { status: 400 });
 
   } catch (error) {
-    console.error('Error modifying task status:', error);
+    console.error('Error changing task status:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

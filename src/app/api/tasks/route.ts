@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
-import { TaskStatus, AssignmentMode } from '@prisma/client';
+import { TaskStatus, AssignmentMode, TaskCategory, TaskLocation, EstimatedDuration } from '@prisma/client';
 
-// Blocked keywords for academic dishonesty
 const ACADEMIC_BLOCKED_KEYWORDS = [
-  'exam', 'quiz', 'homework', 'assignment', 'essay', 'test',
-  'impersonate', 'write paper', 'take class', 'do exam', 'grade',
+  'assignment', 'exam', 'quiz', 'test', 'homework', 'essay', 'thesis', 'project help',
+  'coursework', 'write for me', 'do my exam', 'take my quiz', 'impersonate', 'proxy exam',
   'midterm', 'endterm', 'cat1', 'cat2', 'fat'
 ];
 
@@ -17,16 +16,22 @@ export async function GET(req: NextRequest) {
     // Parse filters
     const search = searchParams.get('search') || undefined;
     const category = searchParams.get('category') || undefined;
-    const budgetMin = searchParams.get('budgetMin') ? parseFloat(searchParams.get('budgetMin')!) : undefined;
-    const budgetMax = searchParams.get('budgetMax') ? parseFloat(searchParams.get('budgetMax')!) : undefined;
+    const budgetMin = searchParams.get('budgetMin') ? parseInt(searchParams.get('budgetMin')!) : undefined;
+    const budgetMax = searchParams.get('budgetMax') ? parseInt(searchParams.get('budgetMax')!) : undefined;
     const deadlineMin = searchParams.get('deadlineMin') ? new Date(searchParams.get('deadlineMin')!) : undefined;
     const deadlineMax = searchParams.get('deadlineMax') ? new Date(searchParams.get('deadlineMax')!) : undefined;
     const dateMin = searchParams.get('dateMin') ? new Date(searchParams.get('dateMin')!) : undefined;
     const dateMax = searchParams.get('dateMax') ? new Date(searchParams.get('dateMax')!) : undefined;
     
-    // Status filter: default to open tasks, but allow fetching others
+    // Status filter: default to OPEN tasks, but allow fetching others
     const statusParam = searchParams.get('status');
-    const status = statusParam ? (statusParam as TaskStatus) : TaskStatus.open;
+    let status: TaskStatus = TaskStatus.OPEN;
+    if (statusParam) {
+      const normalizedStatus = statusParam.toUpperCase();
+      if (Object.values(TaskStatus).includes(normalizedStatus as TaskStatus)) {
+        status = normalizedStatus as TaskStatus;
+      }
+    }
 
     // Sorting
     const sortBy = searchParams.get('sortBy') || 'newest';
@@ -35,6 +40,10 @@ export async function GET(req: NextRequest) {
     const where: any = {
       status: status,
     };
+
+    if (status === TaskStatus.OPEN) {
+      where.deadline = { gt: new Date() };
+    }
 
     if (search) {
       where.OR = [
@@ -48,13 +57,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (budgetMin !== undefined || budgetMax !== undefined) {
-      where.budget = {};
-      if (budgetMin !== undefined) where.budget.gte = budgetMin;
-      if (budgetMax !== undefined) where.budget.lte = budgetMax;
+      where.offeredAmount = {};
+      if (budgetMin !== undefined) where.offeredAmount.gte = budgetMin;
+      if (budgetMax !== undefined) where.offeredAmount.lte = budgetMax;
     }
 
     if (deadlineMin !== undefined || deadlineMax !== undefined) {
-      where.deadline = {};
+      where.deadline = where.deadline || {};
       if (deadlineMin !== undefined) where.deadline.gte = deadlineMin;
       if (deadlineMax !== undefined) where.deadline.lte = deadlineMax;
     }
@@ -66,14 +75,16 @@ export async function GET(req: NextRequest) {
     }
 
     // Build orderBy clause
-    let orderBy: any = { created_at: 'desc' };
+    let orderBy: any = [{ isUrgent: 'desc' }, { created_at: 'desc' }];
     if (sortBy === 'budget_asc') {
-      orderBy = { budget: 'asc' };
+      orderBy = [{ isUrgent: 'desc' }, { offeredAmount: 'asc' }];
     } else if (sortBy === 'budget_desc') {
-      orderBy = { budget: 'desc' };
+      orderBy = [{ isUrgent: 'desc' }, { offeredAmount: 'desc' }];
     } else if (sortBy === 'oldest') {
-      orderBy = { created_at: 'asc' };
+      orderBy = [{ isUrgent: 'desc' }, { created_at: 'asc' }];
     }
+
+    const sessionUser = await getSessionUser();
 
     // Fetch tasks
     const tasks = await prisma.task.findMany({
@@ -82,13 +93,22 @@ export async function GET(req: NextRequest) {
       include: {
         poster: {
           select: {
+            id: true,
             username: true,
             verified: true,
+            ratingAverage: true,
+            ratingCount: true,
           },
         },
         _count: {
           select: { applications: true },
         },
+        applications: sessionUser
+          ? {
+              where: { doerId: sessionUser.id },
+              select: { id: true, status: true },
+            }
+          : undefined,
       },
     });
 
@@ -108,26 +128,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized. Please sign in.' }, { status: 401 });
     }
 
+    if (sessionUser.status === 'SUSPENDED') {
+      return NextResponse.json({ error: 'Forbidden. Suspended accounts have read-only access.' }, { status: 403 });
+    }
+
     const {
       title,
       description,
       photo_url,
       category,
       people_needed,
-      budget,
+      offeredAmount,
       deadline,
       location,
       assignment_mode,
+      isUrgent,
+      estimatedDuration,
     } = await req.json();
 
     // 1. Basic Validations
-    if (!title || !description || !category || !budget || !deadline || !location || !assignment_mode) {
-      return NextResponse.json({ error: 'All fields (title, description, category, budget, deadline, location, assignment mode) are required.' }, { status: 400 });
+    if (!title || !description || !category || offeredAmount === undefined || !deadline || !location || !assignment_mode) {
+      return NextResponse.json({ error: 'All fields (title, description, category, offeredAmount, deadline, location, assignment mode) are required.' }, { status: 400 });
     }
 
-    const parsedBudget = parseFloat(budget);
-    if (isNaN(parsedBudget) || parsedBudget <= 0) {
-      return NextResponse.json({ error: 'Budget must be a positive number greater than 0.' }, { status: 400 });
+    const parsedAmount = parseInt(offeredAmount, 10);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return NextResponse.json({ error: 'Offered amount must be a positive integer greater than 0.' }, { status: 400 });
     }
 
     const parsedPeople = parseInt(people_needed, 10);
@@ -141,14 +167,23 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify category is valid
-    const allowedCategories = ['Errands', 'Second-hand items', 'Tutoring', 'Freelancing', 'Transportation'];
-    if (!allowedCategories.includes(category)) {
-      return NextResponse.json({ error: `Invalid category. Choose from: ${allowedCategories.join(', ')}` }, { status: 400 });
+    if (!Object.values(TaskCategory).includes(category as TaskCategory)) {
+      return NextResponse.json({ error: `Invalid category. Choose from: ${Object.values(TaskCategory).join(', ')}` }, { status: 400 });
+    }
+
+    // Verify location is valid
+    if (!Object.values(TaskLocation).includes(location as TaskLocation)) {
+      return NextResponse.json({ error: `Invalid location. Choose from: ${Object.values(TaskLocation).join(', ')}` }, { status: 400 });
     }
 
     // Verify assignment mode is valid
     if (assignment_mode !== AssignmentMode.first_come && assignment_mode !== AssignmentMode.review_select) {
       return NextResponse.json({ error: 'Invalid assignment mode. Select first_come or review_select.' }, { status: 400 });
+    }
+
+    // Verify estimatedDuration is valid
+    if (estimatedDuration && !Object.values(EstimatedDuration).includes(estimatedDuration as EstimatedDuration)) {
+      return NextResponse.json({ error: `Invalid estimated duration. Choose from: ${Object.values(EstimatedDuration).join(', ')}` }, { status: 400 });
     }
 
     // 2. Academic Integrity Content Policy Checks
@@ -166,59 +201,28 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // 3. Check if user has enough credits to pay the budget
-    const user = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { balance: true },
-    });
-
-    if (!user || user.balance < parsedBudget) {
-      return NextResponse.json({
-        error: `Insufficient balance. Your current balance is ₹${user?.balance || 0}, but this task requires a budget of ₹${parsedBudget}.`
-      }, { status: 400 });
-    }
-
-    // 4. Create Task and Deduct credits from Poster (escrow)
-    const task = await prisma.$transaction(async (tx) => {
-      // Create Task
-      const newTask = await tx.task.create({
-        data: {
-          poster_id: sessionUser.id,
-          title: title.trim(),
-          description: description.trim(),
-          photo_url: photo_url || null,
-          category,
-          budget: parsedBudget,
-          payment_amount: parsedBudget,
-          deadline: deadlineDate,
-          location: location.trim(),
-          people_needed: parsedPeople,
-          assignment_mode: assignment_mode,
-          status: TaskStatus.open,
-        },
-      });
-
-      // Deduct credits from user's account
-      await tx.user.update({
-        where: { id: sessionUser.id },
-        data: { balance: { decrement: parsedBudget } },
-      });
-
-      // Log credit transaction
-      await tx.transaction.create({
-        data: {
-          user_id: sessionUser.id,
-          amount: -parsedBudget,
-          reason: `Posted task: "${title.trim()}" (₹${parsedBudget} held in escrow)`,
-        },
-      });
-
-      return newTask;
+    // 3. Create Task (No wallet/escrow deduction)
+    const task = await prisma.task.create({
+      data: {
+        poster_id: sessionUser.id,
+        title: title.trim(),
+        description: description.trim(),
+        photo_url: photo_url || null,
+        category: category as TaskCategory,
+        offeredAmount: parsedAmount,
+        deadline: deadlineDate,
+        location: location as TaskLocation,
+        people_needed: parsedPeople,
+        assignment_mode: assignment_mode,
+        status: TaskStatus.OPEN,
+        isUrgent: !!isUrgent,
+        estimatedDuration: (estimatedDuration as EstimatedDuration) || EstimatedDuration.MIN_30,
+      },
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Task created successfully! ₹' + parsedBudget + ' held in escrow.',
+      message: 'Task created successfully!',
       task,
     });
 

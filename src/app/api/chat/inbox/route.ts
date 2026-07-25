@@ -16,14 +16,14 @@ export async function GET() {
       where: {
         poster_id: sessionUser.id,
         applications: {
-          some: { status: ApplicationStatus.accepted },
+          some: { status: ApplicationStatus.ACCEPTED },
         },
       },
       include: {
         applications: {
-          where: { status: ApplicationStatus.accepted },
+          where: { status: ApplicationStatus.ACCEPTED },
           include: {
-            applicant: {
+            doer: {
               select: { id: true, username: true, verified: true },
             },
           },
@@ -40,8 +40,8 @@ export async function GET() {
       where: {
         applications: {
           some: {
-            applicant_id: sessionUser.id,
-            status: ApplicationStatus.accepted,
+            doerId: sessionUser.id,
+            status: ApplicationStatus.ACCEPTED,
           },
         },
       },
@@ -63,7 +63,7 @@ export async function GET() {
     for (const task of postedConversations) {
       // There can be multiple accepted doers if people_needed > 1, but we map them
       task.applications.forEach((app) => {
-        const otherUser = app.applicant;
+        const otherUser = app.doer;
         const lastMsg = task.messages[0] || null;
         
         inboxList.push({

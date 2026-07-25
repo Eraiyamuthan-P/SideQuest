@@ -1,13 +1,18 @@
 import { cookies } from 'next/headers';
 import { verifyToken } from './jwt';
 import prisma from './prisma';
+import { Role, AccountStatus } from '@prisma/client';
 
 export interface AuthenticatedUser {
   id: string;
   username: string;
   email: string;
   verified: boolean;
-  balance: number;
+  ratingAverage: number;
+  ratingCount: number;
+  role: Role;
+  status: AccountStatus;
+  sessionVersion: number;
 }
 
 export async function getSessionUser(): Promise<AuthenticatedUser | null> {
@@ -31,11 +36,40 @@ export async function getSessionUser(): Promise<AuthenticatedUser | null> {
         username: true,
         email: true,
         verified: true,
-        balance: true,
+        ratingAverage: true,
+        ratingCount: true,
+        role: true,
+        status: true,
+        deletedAt: true,
+        sessionVersion: true,
       },
     });
 
-    return user;
+    if (!user) {
+      return null;
+    }
+
+    // BANNED or Soft Deleted users: reject login/JWT completely
+    if (user.deletedAt !== null || user.status === AccountStatus.BANNED) {
+      return null;
+    }
+
+    // Session Revocation: if JWT sessionVersion differs from database sessionVersion, reject token
+    if (user.sessionVersion !== payload.sessionVersion) {
+      return null;
+    }
+
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      verified: user.verified,
+      ratingAverage: user.ratingAverage,
+      ratingCount: user.ratingCount,
+      role: user.role,
+      status: user.status,
+      sessionVersion: user.sessionVersion,
+    };
   } catch (error) {
     console.error('Error fetching session user:', error);
     return null;
