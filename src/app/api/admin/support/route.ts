@@ -10,17 +10,19 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
     }
 
-    // Fetch all tickets with user information
+    const isPowerAdmin = sessionUser.role === 'SUPER_ADMIN' || sessionUser.role === 'ADMIN';
+
+    // Fetch all tickets with user information (omitting email for moderators)
     const tickets = await prisma.supportTicket.findMany({
       include: {
         user: {
-          select: { username: true, email: true },
+          select: { username: true, email: isPowerAdmin },
         },
       },
       orderBy: { created_at: 'desc' },
     });
 
-    // Also fetch tasks that are in completed state (to easily find disputes)
+    // Fetch tasks that are in completed state (to easily find disputes)
     const completedTasks = await prisma.task.findMany({
       where: { status: TaskStatus.COMPLETED },
       include: {
@@ -49,7 +51,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
     }
 
-    const { ticket_id, status, task_id, resolution, reason } = await req.json();
+    const { ticket_id, status, task_id, resolution, reason, notes, priority } = await req.json();
 
     if (!ticket_id) {
       return NextResponse.json({ error: 'Ticket ID is required.' }, { status: 400 });
@@ -72,6 +74,12 @@ export async function PUT(req: NextRequest) {
     }
 
     const ipAddress = req.headers.get('x-forwarded-for') || '127.0.0.1';
+    let timelineList: any[] = [];
+    if (ticket.timeline && Array.isArray(ticket.timeline)) {
+      timelineList = [...ticket.timeline];
+    }
+
+    const dataToUpdate: any = {};
 
     // Handle dispute resolution credit adjustments if provided
     if (ticket.type === 'dispute' && task_id && resolution) {
@@ -178,10 +186,42 @@ export async function PUT(req: NextRequest) {
       });
     }
 
+    if (status !== undefined) {
+      dataToUpdate.status = status;
+      timelineList.push({
+        timestamp: new Date().toISOString(),
+        actor: `@${sessionUser.username} (${sessionUser.role})`,
+        action: `Status transitioned to ${status}`,
+        note: reason.trim()
+      });
+    }
+
+    if (notes !== undefined) {
+      dataToUpdate.notes = notes.trim();
+      timelineList.push({
+        timestamp: new Date().toISOString(),
+        actor: `@${sessionUser.username} (${sessionUser.role})`,
+        action: 'Internal Note Added',
+        note: notes.trim()
+      });
+    }
+
+    if (priority !== undefined) {
+      dataToUpdate.priority = priority;
+      timelineList.push({
+        timestamp: new Date().toISOString(),
+        actor: `@${sessionUser.username} (${sessionUser.role})`,
+        action: `Priority set to ${priority}`,
+        note: reason.trim()
+      });
+    }
+
+    dataToUpdate.timeline = timelineList;
+
     // Update ticket status
     const updatedTicket = await prisma.supportTicket.update({
       where: { id: ticket_id },
-      data: { status: status || 'resolved' },
+      data: dataToUpdate,
     });
 
     return NextResponse.json({

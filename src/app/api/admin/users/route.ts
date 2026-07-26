@@ -12,6 +12,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
     }
 
+    const isPowerAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
+
     const users = await prisma.user.findMany({
       where: {
         deletedAt: null // Only display active (non-deleted) users in users management directory
@@ -19,7 +21,7 @@ export async function GET() {
       select: {
         id: true,
         username: true,
-        email: true,
+        email: isPowerAdmin,
         verified: true,
         credits: true,
         role: true,

@@ -27,12 +27,15 @@ interface SupportTicketRecord {
   id: string;
   user: {
     username: string;
-    email: string;
+    email?: string;
   };
   type: string;
   subject: string;
   message: string;
   status: string;
+  priority?: string;
+  notes?: string | null;
+  timeline?: any;
   created_at: string;
 }
 
@@ -453,8 +456,8 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleTicketUpdate = async (ticketId: string, ticketStatus: string) => {
-    const reason = prompt('Enter justification reason (10 to 500 characters) to resolve this ticket:');
+  const handleTicketUpdate = async (ticketId: string, params: { status?: string; notes?: string; priority?: string }) => {
+    const reason = prompt('Enter justification reason (10 to 500 characters) for this action:');
     if (reason === null) return;
     if (reason.trim().length < 10 || reason.trim().length > 500) {
       alert('Action blocked: administrative reason must be between 10 and 500 characters long.');
@@ -466,13 +469,13 @@ export default function AdminDashboard() {
       const res = await fetch('/api/admin/support', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket_id: ticketId, status: ticketStatus, reason: reason.trim() }),
+        body: JSON.stringify({ ticket_id: ticketId, reason: reason.trim(), ...params }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update support ticket.');
       
       await loadAllData();
-      alert(`Ticket status updated to ${ticketStatus}.`);
+      alert('Support ticket updated successfully.');
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -1145,18 +1148,85 @@ export default function AdminDashboard() {
             <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1.5rem', letterSpacing: '-0.02em' }}>Escalated Disputes Reports</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               {tickets.filter(t => t.type === 'dispute').map(t => (
-                <div key={t.id} style={{ border: '1px solid rgba(239, 68, 68, 0.15)', background: 'rgba(239, 68, 68, 0.02)', padding: '1.5rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 800, color: '#ffffff' }}>{t.subject}</span>
-                    <span style={{ background: t.status === 'open' ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', color: t.status === 'open' ? 'var(--danger)' : 'var(--success)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700 }}>
-                      {t.status.toUpperCase()}
-                    </span>
+                <div key={t.id} style={{ border: '1px solid rgba(239, 68, 68, 0.25)', background: 'rgba(239, 68, 68, 0.03)', padding: '1.5rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div>
+                      <span style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--danger)', padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.7rem', marginRight: '0.5rem', fontWeight: 700 }}>{t.type.toUpperCase()}</span>
+                      <span style={{ fontWeight: 800, color: '#ffffff' }}>{t.subject}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {/* Priority selector */}
+                      <select 
+                        value={t.priority || 'normal'}
+                        onChange={(e) => handleTicketUpdate(t.id, { priority: e.target.value })}
+                        style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--glass-border)', borderRadius: '4px', fontSize: '0.75rem', padding: '0.2rem 0.4rem', outline: 'none' }}
+                      >
+                        <option value="low">Low Priority</option>
+                        <option value="normal">Normal Priority</option>
+                        <option value="high">High Priority</option>
+                      </select>
+
+                      {/* Status selector */}
+                      <select 
+                        value={t.status}
+                        onChange={(e) => handleTicketUpdate(t.id, { status: e.target.value })}
+                        style={{ 
+                          background: t.status === 'open' ? 'rgba(239,68,68,0.12)' : t.status === 'in_progress' ? 'rgba(99,102,241,0.12)' : t.status === 'resolved' ? 'rgba(34,197,94,0.12)' : 'rgba(100,116,139,0.12)', 
+                          color: t.status === 'open' ? 'var(--danger)' : t.status === 'in_progress' ? 'var(--accent-primary)' : t.status === 'resolved' ? 'var(--success)' : 'var(--text-secondary)', 
+                          border: 'none', 
+                          borderRadius: '4px', 
+                          fontSize: '0.75rem', 
+                          fontWeight: 700,
+                          padding: '0.2rem 0.4rem',
+                          outline: 'none'
+                        }}
+                      >
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="waiting_for_user">Waiting for User</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="closed">Closed</option>
+                      </select>
+                    </div>
                   </div>
+                  
                   <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0 }}>{t.message}</p>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    <span>Posted by @{t.user?.username} ({t.user?.email})</span>
+                  
+                  {/* Internal Notes box */}
+                  <div style={{ background: 'rgba(255,255,255,0.02)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Internal Notes (Admin-Only)</div>
+                    <input 
+                      type="text" 
+                      placeholder={t.notes ? t.notes : "Add internal note here..."}
+                      defaultValue={t.notes || ''}
+                      onBlur={(e) => {
+                        if (e.target.value && e.target.value !== t.notes) {
+                          handleTicketUpdate(t.id, { notes: e.target.value });
+                        }
+                      }}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: '#ffffff', borderRadius: '4px', padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  {/* History Timeline */}
+                  {t.timeline && Array.isArray(t.timeline) && (
+                    <div style={{ marginTop: '0.5rem', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Dispute Timeline History</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {t.timeline.map((event: any, idx: number) => (
+                          <div key={idx} style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <span>🕒 {new Date(event.timestamp).toLocaleString()}</span> — <strong style={{ color: 'var(--text-secondary)' }}>{event.action}</strong> by {event.actor}
+                            {event.note && <div style={{ marginLeft: '1.25rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>"{event.note}"</div>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '0.75rem' }}>
+                    <span>Posted by @{t.user?.username} {t.user?.email ? `(${t.user.email})` : ''}</span>
                     {t.status === 'open' && (
-                      <button onClick={() => handleTicketUpdate(t.id, 'resolved')} className="btn btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', background: 'var(--success)' }}>
+                      <button onClick={() => handleTicketUpdate(t.id, { status: 'resolved' })} className="btn btn-primary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', background: 'var(--success)' }}>
                         Mark Resolved
                       </button>
                     )}
@@ -1175,24 +1245,120 @@ export default function AdminDashboard() {
         {/* Tab 5: Support Tickets */}
         {activeTab === 'support' && (
           <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1.5rem', letterSpacing: '-0.02em' }}>Help & Support Center Tickets</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Help & Support Center Tickets</h3>
+              <button 
+                onClick={() => {
+                  const sub = prompt('Enter ticket subject:');
+                  if (!sub) return;
+                  const msg = prompt('Enter ticket message description:');
+                  if (!msg) return;
+                  const cat = prompt('Enter ticket category (contact, feedback, bug, dispute):');
+                  if (!cat || !['contact', 'feedback', 'bug', 'dispute'].includes(cat.toLowerCase().trim())) {
+                    alert('Invalid category. Use: contact, feedback, bug, dispute.');
+                    return;
+                  }
+                  
+                  fetch('/api/support', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: cat.toLowerCase().trim(), subject: sub, message: msg }),
+                  }).then(res => {
+                    if (res.ok) {
+                      loadAllData();
+                      alert('Support ticket created successfully!');
+                    } else {
+                      alert('Failed to create ticket.');
+                    }
+                  });
+                }}
+                className="btn btn-primary"
+                style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+              >
+                + Open Support Ticket
+              </button>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               {tickets.filter(t => t.type !== 'dispute').map(t => (
                 <div key={t.id} style={{ border: '1px solid var(--glass-border)', background: 'var(--glass-bg)', padding: '1.5rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <div>
                       <span style={{ background: 'rgba(99,102,241,0.12)', color: 'var(--accent-primary)', padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.7rem', marginRight: '0.5rem', fontWeight: 700 }}>{t.type.toUpperCase()}</span>
                       <span style={{ fontWeight: 800, color: '#ffffff' }}>{t.subject}</span>
                     </div>
-                    <span style={{ background: t.status === 'open' ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)', color: t.status === 'open' ? 'var(--warning)' : 'var(--success)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700 }}>
-                      {t.status.toUpperCase()}
-                    </span>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {/* Priority selector */}
+                      <select 
+                        value={t.priority || 'normal'}
+                        onChange={(e) => handleTicketUpdate(t.id, { priority: e.target.value })}
+                        style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--glass-border)', borderRadius: '4px', fontSize: '0.75rem', padding: '0.2rem 0.4rem', outline: 'none' }}
+                      >
+                        <option value="low">Low Priority</option>
+                        <option value="normal">Normal Priority</option>
+                        <option value="high">High Priority</option>
+                      </select>
+
+                      {/* Status selector */}
+                      <select 
+                        value={t.status}
+                        onChange={(e) => handleTicketUpdate(t.id, { status: e.target.value })}
+                        style={{ 
+                          background: t.status === 'open' ? 'rgba(245,158,11,0.12)' : t.status === 'in_progress' ? 'rgba(99,102,241,0.12)' : t.status === 'resolved' ? 'rgba(34,197,94,0.12)' : 'rgba(100,116,139,0.12)', 
+                          color: t.status === 'open' ? 'var(--warning)' : t.status === 'in_progress' ? 'var(--accent-primary)' : t.status === 'resolved' ? 'var(--success)' : 'var(--text-secondary)', 
+                          border: 'none', 
+                          borderRadius: '4px', 
+                          fontSize: '0.75rem', 
+                          fontWeight: 700,
+                          padding: '0.2rem 0.4rem',
+                          outline: 'none'
+                        }}
+                      >
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="waiting_for_user">Waiting for User</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="closed">Closed</option>
+                      </select>
+                    </div>
                   </div>
                   <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0 }}>{t.message}</p>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    <span>Posted by @{t.user?.username} ({t.user?.email})</span>
+
+                  {/* Internal Notes box */}
+                  <div style={{ background: 'rgba(255,255,255,0.02)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Internal Notes (Admin-Only)</div>
+                    <input 
+                      type="text" 
+                      placeholder={t.notes ? t.notes : "Add internal note here..."}
+                      defaultValue={t.notes || ''}
+                      onBlur={(e) => {
+                        if (e.target.value && e.target.value !== t.notes) {
+                          handleTicketUpdate(t.id, { notes: e.target.value });
+                        }
+                      }}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: '#ffffff', borderRadius: '4px', padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  {/* History Timeline */}
+                  {t.timeline && Array.isArray(t.timeline) && (
+                    <div style={{ marginTop: '0.5rem', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Ticket Timeline History</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {t.timeline.map((event: any, idx: number) => (
+                          <div key={idx} style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <span>🕒 {new Date(event.timestamp).toLocaleString()}</span> — <strong style={{ color: 'var(--text-secondary)' }}>{event.action}</strong> by {event.actor}
+                            {event.note && <div style={{ marginLeft: '1.25rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>"{event.note}"</div>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '0.75rem' }}>
+                    <span>Posted by @{t.user?.username} {t.user?.email ? `(${t.user.email})` : ''}</span>
                     {t.status === 'open' && (
-                      <button onClick={() => handleTicketUpdate(t.id, 'resolved')} className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}>
+                      <button onClick={() => handleTicketUpdate(t.id, { status: 'resolved' })} className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}>
                         Close & Settle
                       </button>
                     )}

@@ -17,13 +17,14 @@ export async function GET(
 
     const sessionUser = await getSessionUser();
     const isOwner = sessionUser ? sessionUser.username === username : false;
+    const isPowerAdmin = sessionUser ? (sessionUser.role === 'SUPER_ADMIN' || sessionUser.role === 'ADMIN') : false;
 
     const user = await prisma.user.findUnique({
       where: { username },
       select: {
         id: true,
         username: true,
-        email: true,
+        email: isOwner || isPowerAdmin,
         verified: true,
         credits: true,
         ratingAverage: true,

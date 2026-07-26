@@ -12,6 +12,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
     }
 
+    const isPowerAdmin = sessionUser.role === 'SUPER_ADMIN' || sessionUser.role === 'ADMIN';
+
     // 1. Fetch active administrators (users with non-STUDENT roles, not soft-deleted)
     const activeAdmins = await prisma.user.findMany({
       where: {
@@ -21,7 +23,7 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         username: true,
-        email: true,
+        email: isPowerAdmin,
         role: true,
         created_at: true,
       },
@@ -43,7 +45,7 @@ export async function GET(req: NextRequest) {
         id: admin.id,
         type: 'user',
         username: admin.username,
-        email: admin.email,
+        email: isPowerAdmin ? admin.email : undefined,
         role: admin.role,
         status: 'Active',
         createdOn: admin.created_at,
@@ -58,7 +60,7 @@ export async function GET(req: NextRequest) {
           id: invite.id,
           type: 'invitation',
           username: '(Pending Registration)',
-          email: invite.email,
+          email: isPowerAdmin ? invite.email : undefined,
           role: invite.role,
           status: isExpired ? 'Expired' : 'Pending',
           createdOn: invite.createdAt,

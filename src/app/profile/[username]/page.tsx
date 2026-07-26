@@ -43,7 +43,6 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
     select: {
       id: true,
       username: true,
-      email: true,
       verified: true,
       credits: true,
       ratingAverage: true,
@@ -299,9 +298,6 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                   {profileUser.availability === 'AVAILABLE' ? 'Available' : 'Busy'}
                 </span>
               </div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-                Email: {profileUser.email}
-              </p>
             </div>
             
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
